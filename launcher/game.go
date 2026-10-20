@@ -479,15 +479,24 @@ func (m *netMatch) valid() bool {
 }
 
 // build identifies the exact game build: lockstep online play needs the same runner and 60 fps rules on both PCs.
+// netProtocol: bump it whenever the netplay code changes what crosses the wire or how a frame is simulated.
+const netProtocol = "net1"
+
+// build: who can play with whom online. Not a hash of the executable (a Mac and a Windows copy of the same game never
+// match byte for byte, and crossplay must work) but what decides the simulation besides the disc, whose ELF is
+// already checked: the netplay protocol and the 60 fps table. Both ports build the runtime with exact floating point
+// (-ffp-contract=off), and the games compare a hash of their state as they play, so a difference shows at once.
+// The Mac launcher computes the same: "net1-" + the first 8 hex of sha256(fps60_sites.txt with CRLF -> LF, trailing
+// blanks trimmed).
 func (g *game) build() string {
-	h := sha256.New()
-	for _, n := range []string{"ps2EntryRunner.exe", "fps60_sites.txt"} {
-		if f, err := os.Open(filepath.Join(g.runtimeDir, n)); err == nil {
-			_, _ = io.Copy(h, f)
-			f.Close()
-		}
-	}
-	return launcherVersion + "-" + hex.EncodeToString(h.Sum(nil))[:8]
+	b, _ := os.ReadFile(filepath.Join(g.runtimeDir, "fps60_sites.txt"))
+	return netProtocol + "-" + fps60Key(b)
+}
+
+func fps60Key(table []byte) string {
+	t := strings.TrimRight(strings.ReplaceAll(string(table), "\r\n", "\n"), " \t\n")
+	s := sha256.Sum256([]byte(t))
+	return hex.EncodeToString(s[:])[:8]
 }
 
 func (g *game) running() bool {

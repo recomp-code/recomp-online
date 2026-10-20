@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Only the launcher's own files run here: nothing remote, no inline scripts. Everything that comes from other
+     players (names, chat, rooms) is inserted as text, never as HTML. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Recomp</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="titlebar">
+  <div class="logo">RECOMP</div>
+  <nav class="tabs">
+    <button class="tab active" data-view="play" type="button">Biblioteca</button>
+    <button class="tab" data-view="online" type="button">En línea<span class="dotcount hidden" id="nav-badge"></span></button>
+    <button class="tab" data-view="settings" type="button">Ajustes</button>
+  </nav>
+  <div class="tb-right">
+    <button class="me" id="userchip" type="button">
+      <span class="pic" id="u-avatar"></span>
+      <span class="me-text"><span class="me-name" id="u-name">Invitado</span><span class="me-status" id="u-status">sin conectar</span></span>
+    </button>
+    <button class="win" id="w-min" type="button" title="Minimizar">&#8211;</button>
+    <button class="win x" id="w-close" type="button" title="Cerrar">&#215;</button>
+  </div>
+</header>
+
+<div class="ingame hidden" id="overlay-banner">
+  <b>Estás en una partida.</b> B o Back + Start en el mando (Shift+Tab en el teclado) te devuelve al juego.
+  <button class="txtbtn" id="btn-back-game" type="button">Volver al juego</button>
+</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="side-h">Juegos</div>
+    <div class="game-row on"><span class="g-icon dbz"></span><span>DBZ Budokai Tenkaichi 4</span></div>
+    <div class="game-row off" title="Su versión en línea llega pronto"><span class="g-icon br"></span><span>Bloody Roar 4</span><em>pronto</em></div>
+    <div class="side-h friends-h"><span>Amigos</span><span id="f-count"></span></div>
+    <div class="friends" id="friends"></div>
+    <div class="side-foot">
+      <a href="#" id="l-github">Código fuente</a>
+      <span id="ver"></span>
+    </div>
+  </aside>
+
+  <main>
+    <!-- BIBLIOTECA -->
+    <section class="view" id="v-play">
+      <div class="banner">
+        <div class="banner-lines"></div>
+        <div class="banner-txt">
+          <h1>Budokai Tenkaichi 4</h1>
+          <p>Dragon Ball Z (Beta 14 Rev2) para Windows</p>
+        </div>
+      </div>
+      <div class="playline">
+        <button class="play" id="btn-play" type="button">Jugar</button>
+        <div class="iso">
+          <span id="iso-line"></span>
+          <button class="txtbtn" id="btn-iso" type="button">Seleccionar ISO</button>
+        </div>
+      </div>
+
+      <h3 class="sect">Imagen y rendimiento</h3>
+      <div class="opts">
+        <div class="opt">
+          <label for="s-quality">Calidad</label>
+          <div class="ctl"><select id="s-quality">
+            <option value="0">Máxima (6x)</option>
+            <option value="1">Equilibrada (3x)</option>
+            <option value="2">DLSS / FSR (2x reescalado)</option>
+            <option value="3">DLSS 5 (experimental)</option>
+          </select><small id="q-hint"></small></div>
+        </div>
+        <div class="opt">
+          <label for="s-fps60">Peleas a 60 fps</label>
+          <div class="ctl"><input type="checkbox" class="sw" id="s-fps60"><small>En PS2 iban a 30. También se cambia dentro del juego.</small></div>
+        </div>
+        <div class="opt">
+          <label for="s-full">Pantalla completa</label>
+          <div class="ctl"><input type="checkbox" class="sw" id="s-full"><small>Alt+Enter cambia durante la partida.</small></div>
+        </div>
+        <div class="opt" id="dlss-card">
+          <label>DLSS</label>
+          <div class="ctl"><span id="dlss-line"></span><button class="txtbtn" id="btn-dlss" type="button">Abrir carpeta</button>
+            <small>¿Tienes una DLL más nueva? Arrástrala a esta ventana.</small></div>
+        </div>
+      </div>
+
+      <h3 class="sect">Controles</h3>
+      <p class="plain">Mando de Xbox: A cruz, B círculo, X cuadrado, Y triángulo. Mantén START (o pulsa F1) para el menú de
+        opciones del juego. Durante la partida, <b>Back + Start</b> (o Shift+Tab) abre esta ventana encima, para ver quién
+        está en línea o invitar; aquí se maneja con la cruceta, A para aceptar y B para volver.</p>
+    </section>
+
+    <!-- EN LÍNEA -->
+    <section class="view hidden" id="v-online">
+      <div class="signin hidden" id="login">
+        <h2>Juega en línea</h2>
+        <p>Una sola cuenta te sirve para todos los juegos de Recomp.</p>
+        <input id="l-user" maxlength="16" placeholder="Usuario" autocomplete="username" spellcheck="false">
+        <input id="l-pass" type="password" maxlength="128" placeholder="Contraseña" autocomplete="current-password">
+        <div class="err" id="l-err"></div>
+        <div class="btnrow">
+          <button class="btn blue" id="btn-login" type="button">Entrar</button>
+          <button class="btn" id="btn-register" type="button">Crear cuenta</button>
+        </div>
+        <small>En este PC solo queda guardada tu sesión, cifrada. La contraseña no.</small>
+      </div>
+
+      <div class="lobby hidden" id="lobby">
+        <div class="lobby-top">
+          <span class="conn" id="conn"><i></i><span id="conn-text">conectando…</span></span>
+          <label class="seek"><input type="checkbox" id="s-waiting"><span>Buscar partida</span></label>
+        </div>
+        <div class="split">
+          <div class="box">
+            <div class="box-h">Jugando DBZ BT4 ahora <span class="n" id="p-count"></span></div>
+            <div class="find"><input id="find" maxlength="16" placeholder="Buscar jugador por nombre" spellcheck="false" autocomplete="off"></div>
+            <div class="rows" id="players"></div>
+          </div>
+          <div class="box" id="rooms-box">
+            <div class="box-h">Salas <button class="txtbtn" id="btn-newroom" type="button">+ Nueva sala</button></div>
+            <div class="rows" id="rooms"></div>
+          </div>
+          <div class="box hidden" id="room-panel">
+            <div class="box-h"><span id="room-name"></span><button class="txtbtn" id="btn-leave" type="button">Salir de la sala</button></div>
+            <div class="queue" id="queue"></div>
+            <button class="btn green wide" id="btn-start" type="button"></button>
+            <div class="chat" id="chat">
+              <div class="chat-log" id="chat-log"></div>
+              <input id="chat-in" maxlength="300" placeholder="Escribe algo a la sala">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section class="view hidden" id="v-settings">
+      <h3 class="sect first">Cuenta</h3>
+      <div class="opts">
+        <div class="opt"><label>Sesión</label><div class="ctl"><span id="acc-line"></span><button class="txtbtn" id="btn-logout" type="button">Cerrar sesión</button></div></div>
+      </div>
+      <h3 class="sect">En línea</h3>
+      <div class="opts">
+        <div class="opt">
+          <label for="s-delay">Retraso de controles</label>
+          <div class="ctl"><select id="s-delay">
+            <option value="0">Automático</option>
+            <option value="1">1 frame</option>
+            <option value="2">2 frames</option>
+            <option value="3">3 frames</option>
+            <option value="4">4 frames</option>
+            <option value="6">6 frames</option>
+          </select><small>Súbelo si la partida da tirones (jugáis lejos). Manda el de quien invita.</small></div>
+        </div>
+        <div class="opt">
+          <label for="s-server">Servidor</label>
+          <div class="ctl"><input id="s-server" spellcheck="false"><button class="txtbtn" id="btn-server" type="button">Guardar</button>
+            <small class="err" id="srv-err"></small></div>
+        </div>
+      </div>
+      <p class="plain dim" id="build-line"></p>
+    </section>
+  </main>
+</div>
+
+<div class="notes" id="toasts"></div>
+
+<div class="modal hidden" id="m-room">
+  <div class="dlg">
+    <h3>Nueva sala</h3>
+    <input id="r-name" maxlength="32" placeholder="Nombre">
+    <input id="r-pass" type="password" maxlength="64" placeholder="Contraseña (si quieres que sea privada)">
+    <div class="sizes" id="r-max">
+      <button type="button" data-max="2" class="on">2</button><button type="button" data-max="3">3</button><button type="button" data-max="4">4</button>
+      <span>jugadores. Con más de 2 se pelea por turnos.</span>
+    </div>
+    <div class="err" id="r-err"></div>
+    <div class="btnrow"><button class="btn blue" id="btn-room-ok" type="button">Crear</button><button class="btn" id="btn-room-cancel" type="button">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="m-pass">
+  <div class="dlg">
+    <h3 id="mp-title"></h3>
+    <input id="mp-pass" type="password" maxlength="64" placeholder="Contraseña">
+    <div class="err" id="mp-err"></div>
+    <div class="btnrow"><button class="btn blue" id="btn-mp-ok" type="button">Entrar</button><button class="btn" id="btn-mp-cancel" type="button">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="m-match">
+  <div class="dlg versus">
+    <div class="vs-names"><span id="mm-me"></span><b>vs</b><span id="mm-op"></span></div>
+    <div id="mm-text"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="pad.js"></script>
+</body>
+</html>

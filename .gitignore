@@ -1,0 +1,10 @@
+# binaries (the Linux ones go to the GitHub release)
+*.exe
+deploy/recomp-online-linux-*
+deploy/SHA256SUMS
+# local data and test output
+data/
+testdata/
+*.log
+*.png
+launcher/build/

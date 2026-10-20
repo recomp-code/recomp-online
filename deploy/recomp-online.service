@@ -1,0 +1,22 @@
+# recomp-online: lobby + salas + relay de las partidas (DBZ BT4, Bloody Roar 4...).
+# install.sh pone este archivo en /etc/systemd/system/ con TU_DOMINIO ya cambiado.
+[Unit]
+Description=Recomp Online (lobby, salas y relay de partidas)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Datos (cuentas, sesiones) en /var/lib/recomp-online (StateDirectory, solo el servicio puede leerlos).
+WorkingDirectory=/var/lib/recomp-online
+ExecStart=/opt/recomp-online/recomp-online --http 127.0.0.1:8090 --relay :7777 --relay-public TU_DOMINIO:7777 --data /var/lib/recomp-online
+Restart=always
+RestartSec=3
+DynamicUser=yes
+StateDirectory=recomp-online
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

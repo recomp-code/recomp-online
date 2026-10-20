@@ -1,11 +1,9 @@
-# binaries (the Linux ones go to the GitHub release)
+# binaries (except the Linux server in deploy/, so a clone installs as is)
 *.exe
-deploy/recomp-online-linux-*
-deploy/SHA256SUMS
+*.exe~
 # local data and test output
 data/
 testdata/
 *.log
 *.png
 launcher/build/
-*.exe~

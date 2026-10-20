@@ -8,3 +8,4 @@ testdata/
 *.log
 *.png
 launcher/build/
+*.exe~

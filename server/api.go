@@ -22,6 +22,7 @@ type api struct {
 	hub     *hub
 	limiter *limiter
 	conns   *connLimit
+	lookups *limiter // player search: generous (the launcher searches as you type) but bounded
 }
 
 func writeJSONResp(w http.ResponseWriter, code int, v any) {
@@ -218,6 +219,36 @@ func (a *api) routes() http.Handler {
 		a.hub.friendsChanged(u)
 		writeJSONResp(w, 200, map[string]any{"friends": a.st.friends(u)})
 	}))
+	if a.lookups == nil {
+		a.lookups = newLimiterN(60)
+	}
+	// player search by nickname: every account (online or not, in any game), to invite or add as a friend
+	mux.HandleFunc("POST /api/users/search", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		var b struct{ Q string }
+		if err := readBody(r, &b); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		q := strings.TrimSpace(b.Q)
+		if n := len([]rune(q)); n < 2 || n > 16 {
+			fail(w, 400, errors.New("escribe de 2 a 16 letras del nombre"))
+			return
+		}
+		if !a.lookups.allow("search:" + strings.ToLower(u)) {
+			fail(w, 429, errors.New("demasiadas búsquedas: espera un momento"))
+			return
+		}
+		friends := map[string]bool{}
+		for _, f := range a.st.friends(u) {
+			friends[strings.ToLower(f)] = true
+		}
+		out := []map[string]any{}
+		for _, name := range a.st.search(q, 20) {
+			game, status := a.hub.whereIs(name)
+			out = append(out, map[string]any{"user": name, "friend": friends[strings.ToLower(name)], "game": game, "status": status})
+		}
+		writeJSONResp(w, 200, map[string]any{"users": out})
+	}))
 	return securityHeaders(mux)
 }
 
@@ -391,13 +422,15 @@ func (l *connLimit) release(ip string) {
 	}
 	l.total--
 }
-// limiter: at most 10 attempts per key per minute (logins, registrations, room passwords).
+// limiter: at most max attempts per key per minute (10 for logins, registrations, room passwords).
 type limiter struct {
 	mu   sync.Mutex
+	max  int
 	hits map[string][]time.Time
 }
 
-func newLimiter() *limiter { return &limiter{hits: map[string][]time.Time{}} }
+func newLimiter() *limiter        { return newLimiterN(10) }
+func newLimiterN(n int) *limiter { return &limiter{max: n, hits: map[string][]time.Time{}} }
 
 func (l *limiter) allow(key string) bool {
 	l.mu.Lock()
@@ -409,7 +442,7 @@ func (l *limiter) allow(key string) bool {
 			h = append(h, t)
 		}
 	}
-	if len(h) >= 10 {
+	if len(h) >= l.max {
 		l.hits[key] = h
 		return false
 	}

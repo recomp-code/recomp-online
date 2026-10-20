@@ -103,6 +103,9 @@ func main() {
 		_ = json.Unmarshal(b, &ev)
 		fmt.Println("event:", ev["type"])
 		switch ev["type"] {
+		case "match": // for the game tests: relay, token and which player this side is
+			m, _ := ev["match"].(map[string]any)
+			fmt.Printf("match: %v %v %v\n", m["relay"], m["token"], m["player"])
 		case "invite":
 			if *accept {
 				inv := ev["invite"].(map[string]any)

@@ -393,3 +393,56 @@ func TestReconnectGrace(t *testing.T) {
 	}
 	a.wait("match")
 }
+// search by nickname: every account, online or not, those starting with the text first; the lobby message
+// carries the player's own friends list.
+func TestPlayerSearch(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Goku", "kamehameha", "dbzbt4", "b1")
+	newTClient(t, base, "Gohan", "masenko123", "dbzbt4", "b1")
+	if code, _ := post(t, base, "/api/register", "", map[string]string{"user": "Goten", "password": "trunks123"}); code != 200 {
+		t.Fatal("register Goten")
+	}
+	post(t, base, "/api/register", "", map[string]string{"user": "SonGoku", "password": "kakarot12"})
+
+	names := func(q string) ([]string, []map[string]any) {
+		code, out := post(t, base, "/api/users/search", a.token, map[string]string{"q": q})
+		if code != 200 {
+			t.Fatalf("search %q: %d %v", q, code, out)
+		}
+		var n []string
+		var rows []map[string]any
+		for _, u := range out["users"].([]any) {
+			m := u.(map[string]any)
+			n = append(n, m["user"].(string))
+			rows = append(rows, m)
+		}
+		return n, rows
+	}
+	got, rows := names("go")
+	if strings.Join(got, ",") != "Gohan,Goku,Goten,SonGoku" {
+		t.Fatalf("search go: %v", got)
+	}
+	if rows[0]["status"] != "lobby" || rows[0]["game"] != "dbzbt4" || rows[2]["status"] != "" {
+		t.Fatalf("search status: %v", rows)
+	}
+	if got, _ := names("HAN"); strings.Join(got, ",") != "Gohan" {
+		t.Fatalf("search HAN: %v", got)
+	}
+	if code, _ := post(t, base, "/api/users/search", a.token, map[string]string{"q": "g"}); code != 400 {
+		t.Fatalf("one letter accepted: %d", code)
+	}
+	if code, _ := post(t, base, "/api/users/search", "", map[string]string{"q": "go"}); code != 401 {
+		t.Fatalf("search without login: %d", code)
+	}
+
+	post(t, base, "/api/friends", a.token, map[string]any{"user": "goten", "add": true})
+	for {
+		ev := a.wait("lobby")
+		if f, _ := ev["friends"].([]any); len(f) == 1 && f[0] == "Goten" {
+			break
+		}
+	}
+	if _, rows := names("goten"); rows[0]["friend"] != true {
+		t.Fatalf("friend flag: %v", rows)
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -225,6 +226,32 @@ func (s *store) exists(name string) (string, bool) {
 		return "", false
 	}
 	return a.Name, true
+}
+
+// search: account names containing q (any case), those that start with it first, then by name.
+func (s *store) search(q string, max int) []string {
+	q = strings.ToLower(q)
+	s.mu.Lock()
+	var pre, mid []string
+	for k, a := range s.users {
+		switch i := strings.Index(k, q); {
+		case i == 0:
+			pre = append(pre, a.Name)
+		case i > 0:
+			mid = append(mid, a.Name)
+		}
+	}
+	s.mu.Unlock()
+	byName := func(l []string) {
+		sort.Slice(l, func(i, j int) bool { return strings.ToLower(l[i]) < strings.ToLower(l[j]) })
+	}
+	byName(pre)
+	byName(mid)
+	out := append(pre, mid...)
+	if len(out) > max {
+		out = out[:max]
+	}
+	return out
 }
 
 func (s *store) friends(user string) []string {

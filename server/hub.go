@@ -291,6 +291,18 @@ func (h *hub) expire(c *client) {
 
 func (h *hub) clientOf(user string) *client { return h.clients[lc(user)] }
 
+// whereIs: the game a player is connected to and their status there ("", "" when offline).
+func (h *hub) whereIs(user string) (string, string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	c := h.clientOf(user)
+	if c == nil || c.gone {
+		return "", ""
+	}
+	st, _ := h.statusLocked(c.user)
+	return c.game, st
+}
+
 var (
 	errNotOnline  = errors.New("ese jugador no está conectado")
 	errBusy       = errors.New("ese jugador está en una partida")

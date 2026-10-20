@@ -1,11 +1,11 @@
 package main
 
 // The game side of the launcher for DBZ Budokai Tenkaichi 4 (Team BT4's mod of BT3, Beta 14 Rev2): the player's ISO
-// (checked and the boot files copied out of it), the quality presets, the player's own DLSS DLLs, DLSS 5 and
-// starting ps2EntryRunner.exe -- offline, or online with the match the server handed out.
+// (checked and the boot files copied out of it), the settings and starting ps2EntryRunner -- offline, or online with
+// the match the server handed out. What differs per system (paths, quality presets, the GS host's renderer, DLSS on
+// Windows) is in game_windows.go / game_darwin.go.
 
 import (
-	"archive/zip"
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,12 +30,6 @@ const (
 	gameSerial    = "SLUS-21978"
 )
 
-var qualityIni = []string{"dbz.ini", "dbz_3x.ini", "dbz_dlss.ini", "dbz_dlss_dx12.ini"}
-
-const (
-	qualityMax, quality3x, qualityDLSS, qualityDLSS5 = 0, 1, 2, 3
-)
-
 type Settings struct {
 	ISO        string `json:"iso"`
 	Quality    int    `json:"quality"`
@@ -45,15 +39,18 @@ type Settings struct {
 }
 
 type game struct {
-	root, runtimeDir, dataDir, gshostDir, cfgPath, dlssDir, logs string
-	mu                                                           sync.Mutex
-	cfg                                                          Settings
-	proc                                                         *os.Process
+	// root: the launcher's folder. home: where it writes (settings, logs, the runtime's data); res: its read-only
+	// files. On Windows the three are the zip's folder; on macOS home is ~/Library/Application Support/DBZ_BT4 and
+	// res the app's Resources (a downloaded app runs from a read-only copy). paths_*.go sets them.
+	root, home, res, runtimeDir, dataDir, gshostDir, cfgPath, dlssDir, logs, runner, sites string
+	mu                                                                                     sync.Mutex
+	cfg                                                                                    Settings
+	proc                                                                                   *os.Process
 }
 
 func newGame(root string) *game {
-	g := &game{root: root, runtimeDir: filepath.Join(root, "runtime"), gshostDir: filepath.Join(root, "gshost"),
-		cfgPath: filepath.Join(root, "DBZ_BT4.cfg"), dlssDir: filepath.Join(root, "DLSS"), logs: filepath.Join(root, "logs")}
+	g := &game{root: root}
+	g.setPaths()
 	g.dataDir = filepath.Join(g.runtimeDir, "data")
 	g.load()
 	return g
@@ -121,16 +118,6 @@ func (g *game) setSettings(s Settings) error {
 	s.ISO = g.cfg.ISO // the ISO only changes through chooseISO (it is checked there)
 	g.cfg = s
 	return g.save()
-}
-
-func (g *game) defaultQuality() int {
-	if strings.Contains(strings.ToUpper(gpuNames()), "RTX") {
-		if g.dlss5Parts() != nil {
-			return qualityDLSS5
-		}
-		return qualityDLSS
-	}
-	return quality3x
 }
 
 // ---- the ISO ----
@@ -210,95 +197,10 @@ func (g *game) prepare(isoPath string) error {
 	return err
 }
 
-// ---- DLSS ----
-
-type dlssKind int
-
-const (
-	dlssNone dlssKind = iota
-	dlssSuperRes
-	dlssNeural
-	dlssReShade
-	dlssAddon
-)
-
-func kindOf(path string) dlssKind {
-	name := strings.ToLower(filepath.Base(path))
-	if strings.HasSuffix(name, ".addon64") {
-		if strings.Contains(name, "dlss5") {
-			return dlssAddon
-		}
-		return dlssNone
-	}
-	if !strings.HasSuffix(name, ".dll") || !isX64(path) {
-		return dlssNone
-	}
-	v, ok := readFileVersion(path)
-	if !ok {
-		return dlssNone
-	}
-	switch {
-	case strings.Contains(strings.ToLower(v.Product), "deep learning supersampling"):
-		return dlssSuperRes
-	case strings.EqualFold(v.Product, "NVIDIA DLSSNR"):
-		return dlssNeural
-	case strings.EqualFold(v.Product, "ReShade") && strings.Contains(v.Description, "64-bit"):
-		return dlssReShade
-	}
-	return dlssNone
-}
-
-func (g *game) userDLSS(kind dlssKind) string {
-	best, bestV := "", fileVersion{}
-	_ = filepath.WalkDir(g.dlssDir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || kindOf(p) != kind {
-			return nil
-		}
-		v, _ := readFileVersion(p)
-		if best == "" || bestV.less(v) {
-			best, bestV = p, v
-		}
-		return nil
-	})
-	return best
-}
-
-func swapperFile(rel string) string {
-	p := filepath.Join(os.Getenv("LOCALAPPDATA"), `Programs\DLSS 5 Swapper\resources\payload`, rel)
-	if _, err := os.Stat(p); err == nil {
-		return p
-	}
-	return ""
-}
-
-func firstNonEmpty(a ...string) string {
-	for _, s := range a {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-// dlss5Parts: ReShade, the RenoDX DLSS 5 add-on and nvngx_dlssnr.dll (DLSS\ first, then DLSS 5 Swapper), or nil.
-func (g *game) dlss5Parts() []string {
-	r := firstNonEmpty(g.userDLSS(dlssReShade), swapperFile(`reshade-vulkan\ReShade64.dll`))
-	a := firstNonEmpty(g.userDLSS(dlssAddon), swapperFile("renodx-dlss5.addon64"))
-	n := firstNonEmpty(g.userDLSS(dlssNeural), swapperFile(`streamline\nvngx_dlssnr.dll`))
-	if r == "" || a == "" || n == "" {
-		return nil
-	}
-	return []string{r, a, n}
-}
-
-func (g *game) superResDLL() string {
-	if u := g.userDLSS(dlssSuperRes); u != "" {
-		return u
-	}
-	if p := filepath.Join(g.gshostDir, "presets", "nvngx_dlss.dll"); fileExists(p) {
-		return p
-	}
-	return filepath.Join(g.gshostDir, "nvngx_dlss.dll")
+// QualityOption: one entry of the Calidad menu (the presets are per system).
+type QualityOption struct {
+	Name string `json:"name"`
+	Hint string `json:"hint"`
 }
 
 type DLSSInfo struct {
@@ -307,17 +209,6 @@ type DLSSInfo struct {
 	DLSS5       bool   `json:"dlss5"`
 	DLSS5Neural string `json:"dlss5Neural"`
 	Folder      string `json:"folder"`
-}
-
-func (g *game) dlssInfo() DLSSInfo {
-	sr := g.superResDLL()
-	v, _ := readFileVersion(sr)
-	info := DLSSInfo{Version: v.String(), Own: g.userDLSS(dlssSuperRes) != "", Folder: g.dlssDir}
-	if p := g.dlss5Parts(); p != nil {
-		nv, _ := readFileVersion(p[2])
-		info.DLSS5, info.DLSS5Neural = true, nv.String()
-	}
-	return info
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -363,102 +254,6 @@ func copyTree(src, dst string) error {
 	})
 }
 
-// addDLSS copies files the player dropped (or picked) into DLSS\ when they are DLSS files.
-func (g *game) addDLSS(paths []string) (int, []string) {
-	n, skipped := 0, []string(nil)
-	_ = os.MkdirAll(g.dlssDir, 0o755)
-	for _, p := range paths {
-		if strings.EqualFold(filepath.Ext(p), ".zip") { // DLSS usually comes zipped (TechPowerUp)
-			k, s := g.addDLSSZip(p)
-			n, skipped = n+k, append(skipped, s...)
-			continue
-		}
-		if kindOf(p) == dlssNone {
-			skipped = append(skipped, filepath.Base(p))
-			continue
-		}
-		if err := copyIfChanged(p, filepath.Join(g.dlssDir, filepath.Base(p))); err != nil {
-			skipped = append(skipped, filepath.Base(p)+" ("+err.Error()+")")
-			continue
-		}
-		n++
-	}
-	return n, skipped
-}
-
-// addDLSSZip takes the DLLs out of a zip: each one is unpacked to a temporary file, checked like a dropped DLL and
-// kept only if it is one of ours.
-func (g *game) addDLSSZip(p string) (int, []string) {
-	zr, err := zip.OpenReader(p)
-	if err != nil {
-		return 0, []string{filepath.Base(p) + " (no se pudo abrir el zip)"}
-	}
-	defer zr.Close()
-	n := 0
-	for _, f := range zr.File {
-		name := filepath.Base(f.Name)
-		ext := strings.ToLower(filepath.Ext(name))
-		if f.FileInfo().IsDir() || (ext != ".dll" && ext != ".addon64") || f.UncompressedSize64 > 256<<20 {
-			continue
-		}
-		tmp, err := os.CreateTemp(g.dlssDir, "zip-*-"+name)
-		if err != nil {
-			continue
-		}
-		rc, err := f.Open()
-		if err == nil {
-			_, err = io.Copy(tmp, io.LimitReader(rc, 256<<20))
-			rc.Close()
-		}
-		tmp.Close()
-		if err == nil && kindOf(tmp.Name()) != dlssNone && copyIfChanged(tmp.Name(), filepath.Join(g.dlssDir, name)) == nil {
-			n++
-		}
-		os.Remove(tmp.Name())
-	}
-	if n == 0 {
-		return 0, []string{filepath.Base(p) + " (no trae ninguna DLL de DLSS)"}
-	}
-	return n, nil
-}
-
-func (g *game) prepareDLSS5Host() (string, error) {
-	parts := g.dlss5Parts()
-	if parts == nil {
-		return "", errors.New("DLSS 5 necesita una NVIDIA RTX y DLSS 5 Swapper (o sus archivos en la carpeta DLSS)")
-	}
-	dir := filepath.Join(g.root, "gshost_dlss5")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	ents, _ := os.ReadDir(g.gshostDir)
-	for _, e := range ents {
-		ext := strings.ToLower(filepath.Ext(e.Name()))
-		if !e.IsDir() && (ext == ".exe" || ext == ".dll") {
-			if err := copyIfChanged(filepath.Join(g.gshostDir, e.Name()), filepath.Join(dir, e.Name())); err != nil {
-				return "", err
-			}
-		}
-	}
-	if err := copyTree(filepath.Join(g.gshostDir, "resources"), filepath.Join(dir, "resources")); err != nil {
-		return "", err
-	}
-	if !fileExists(filepath.Join(dir, "portable.ini")) {
-		_ = os.WriteFile(filepath.Join(dir, "portable.ini"), nil, 0o644)
-	}
-	for i, n := range []string{"dxgi.dll", "renodx-dlss5.addon64", "nvngx_dlssnr.dll"} {
-		if err := copyIfChanged(parts[i], filepath.Join(dir, n)); err != nil {
-			return "", err
-		}
-	}
-	for _, n := range []string{"dbz_dlss_dx12.ini", "ReShade.ini"} {
-		if !fileExists(filepath.Join(dir, n)) {
-			_ = copyIfChanged(filepath.Join(g.gshostDir, "presets", n), filepath.Join(dir, n))
-		}
-	}
-	return dir, nil
-}
-
 // ---- playing ----
 
 // netMatch is a match from the online server, already validated.
@@ -489,7 +284,7 @@ const netProtocol = "net1"
 // The Mac launcher computes the same: "net1-" + the first 8 hex of sha256(fps60_sites.txt with CRLF -> LF, trailing
 // blanks trimmed).
 func (g *game) build() string {
-	b, _ := os.ReadFile(filepath.Join(g.runtimeDir, "fps60_sites.txt"))
+	b, _ := os.ReadFile(g.sites)
 	return netProtocol + "-" + fps60Key(b)
 }
 
@@ -497,6 +292,16 @@ func fps60Key(table []byte) string {
 	t := strings.TrimRight(strings.ReplaceAll(string(table), "\r\n", "\n"), " \t\n")
 	s := sha256.Sum256([]byte(t))
 	return hex.EncodeToString(s[:])[:8]
+}
+
+// pid: the running game's process (0 when none).
+func (g *game) pid() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.proc == nil {
+		return 0
+	}
+	return g.proc.Pid
 }
 
 func (g *game) running() bool {
@@ -517,21 +322,10 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if m != nil && !m.valid() {
 		return errors.New("la partida que mandó el servidor no es válida")
 	}
-	// the DLSS the player chose (DLSS\ or the bundled one) goes next to the host
-	if sr := g.superResDLL(); !strings.EqualFold(filepath.Clean(sr), filepath.Clean(filepath.Join(g.gshostDir, "nvngx_dlss.dll"))) {
-		_ = copyIfChanged(sr, filepath.Join(g.gshostDir, "nvngx_dlss.dll"))
-	}
-	q, hostDir := s.Quality, g.gshostDir
-	if q == qualityDLSS5 {
-		if d, err := g.prepareDLSS5Host(); err == nil {
-			hostDir = d
-		} else {
-			q = qualityDLSS
-		}
-	}
-	ini := qualityIni[q]
-	if !fileExists(filepath.Join(hostDir, ini)) {
-		_ = copyIfChanged(filepath.Join(g.gshostDir, "presets", ini), filepath.Join(hostDir, ini))
+	// the GS host, its ini and the platform's own variables (game_windows.go / game_darwin.go)
+	hostIni, args, penv, err := g.hostSetup(s)
+	if err != nil {
+		return err
 	}
 	_ = os.MkdirAll(g.logs, 0o755)
 	ww, wh := workArea()
@@ -541,11 +335,6 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		h = wh * 9 / 10
 		w = h * 16 / 9
 	}
-	renderer := "-renderer vulkan"
-	if q == qualityDLSS5 {
-		renderer = "-renderer dx12"
-	}
-	args := renderer + " -ini " + ini
 	if s.Fullscreen {
 		args += " -fullscreen"
 	}
@@ -553,11 +342,8 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	env := append(os.Environ(),
 		"PS2X_CD_IMAGE="+s.ISO, "PS2X_GS_LIVE=1", "PS2X_GSHOST_ARGS="+args,
 		"PS2X_LIVE_SERIAL="+gameSerial, "PS2X_LIVE_TITLE="+gameTitle,
-		fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h), "PS2X_LOGFILE="+filepath.Join(g.logs, "juego.log"),
-		"PS2X_HALFSTEP="+filepath.Join(g.runtimeDir, "fps60_sites.txt"))
-	if hostDir != g.gshostDir {
-		env = append(env, "PS2X_GSHOST="+filepath.Join(hostDir, "pcsx2-gsrunner.exe"))
-	}
+		fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h), "PS2X_HALFSTEP="+g.sites)
+	env = append(env, penv...)
 	if m != nil {
 		fps60 = m.Fps60 // both players must run the same mode: the match decides
 		delay := m.Delay
@@ -571,9 +357,11 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 			fmt.Sprintf("PS2X_NET_DELAY=%d", delay), "NET_OVERLAY=1", "PS2X_NET_JUMP=1")
 	}
 	env = append(env, "PS2X_FPS60="+b01(fps60))
-	cmd := exec.Command(filepath.Join(g.runtimeDir, "ps2EntryRunner.exe"), filepath.Join(g.dataDir, "SLUS_216.78"))
+	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, "SLUS_216.78"))
 	cmd.Dir, cmd.Env = g.runtimeDir, env
+	cleanup := g.prepareCmd(cmd)
 	if err := cmd.Start(); err != nil {
+		cleanup()
 		return fmt.Errorf("no pude arrancar el juego: %v", err)
 	}
 	g.mu.Lock()
@@ -589,10 +377,11 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 				code = ee.ExitCode()
 			}
 		}
+		cleanup()
 		g.mu.Lock()
 		g.proc = nil
 		g.mu.Unlock()
-		g.readBackFps60(filepath.Join(hostDir, ini))
+		g.readBackFps60(hostIni)
 		_ = started
 		done(code, filepath.Join(g.logs, "juego.log"))
 	}()

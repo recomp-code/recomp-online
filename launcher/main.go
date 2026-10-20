@@ -3,6 +3,10 @@
 // Build (no Wails CLI needed):
 //
 //	go build -tags desktop,production -trimpath -ldflags "-H windowsgui -s -w -X main.defaultServer=https://online.tudominio.com" -o DBZ_BT4.exe
+//
+// macOS (cgo; the app bundle around it is made by dbz-bt4-recomp's macos/make_dist.sh):
+//
+//	CGO_LDFLAGS="-framework UniformTypeIdentifiers" MACOSX_DEPLOYMENT_TARGET=14.0 go build -tags desktop,production -trimpath -ldflags "-s -w -X main.defaultServer=https://online.tudominio.com" -o DBZ_BT4
 package main
 
 import (
@@ -48,6 +52,7 @@ func main() {
 		Bind:              []interface{}{app},
 		DragAndDrop:       &options.DragAndDrop{EnableFileDrop: true}, // app.js stops the browser from opening dropped files
 		EnableDefaultContextMenu: false,
+		Menu:                     appMenu(), // macOS: the app and Edit menus (Cmd+Q, Cmd+C / Cmd+V in the fields)
 		Windows: &windows.Options{
 			Theme:                windows.Dark,
 			DisableWindowIcon:    false,

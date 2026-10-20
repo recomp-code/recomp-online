@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +32,7 @@ type App struct {
 func NewApp(root string, direct bool) *App {
 	a := &App{root: root, direct: direct}
 	a.game = newGame(root)
-	a.net = newOnline(root, a.game.build(), a.emit)
+	a.net = newOnline(a.game.home, a.game.build(), a.emit) // home: where the launcher writes (game_*.go)
 	a.net.onEvent = a.onNetEvent
 	return a
 }
@@ -82,6 +81,11 @@ type State struct {
 	User     string   `json:"user"`
 	LoggedIn bool     `json:"loggedIn"`
 	Playing  bool     `json:"playing"`
+	// what differs per system, for the interface
+	Platform      string          `json:"platform"`
+	Qualities     []QualityOption `json:"qualities"`
+	FullscreenKey string          `json:"fullscreenKey"`
+	DataFolder    string          `json:"dataFolder"`
 }
 
 func (a *App) State() State {
@@ -91,7 +95,8 @@ func (a *App) State() State {
 	server := a.net.cfg.Server
 	a.net.mu.Unlock()
 	return State{Title: gameTitle, Version: launcherVersion, Build: a.net.build, Ready: a.game.ready(), ISO: s.ISO, Settings: s,
-		DLSS: a.game.dlssInfo(), GPU: gpuNames(), Server: server, User: u, LoggedIn: ok, Playing: a.game.running()}
+		DLSS: a.game.dlssInfo(), GPU: gpuNames(), Server: server, User: u, LoggedIn: ok, Playing: a.game.running(),
+		Platform: platformName, Qualities: qualityOptions, FullscreenKey: fullscreenKey, DataFolder: a.game.dataFolder()}
 }
 
 func (a *App) SaveSettings(s Settings) string { return errText(a.game.setSettings(s)) }
@@ -112,9 +117,11 @@ func (a *App) ChooseISO() string {
 	return errText(a.game.prepare(p))
 }
 
+// OpenDLSSFolder: the DLSS folder on Windows, the saves and logs folder on macOS (game_*.go, dataFolder).
 func (a *App) OpenDLSSFolder() {
-	_ = os.MkdirAll(a.game.dlssDir, 0o755)
-	wruntime.BrowserOpenURL(a.ctx, "file:///"+filepath.ToSlash(a.game.dlssDir))
+	d := a.game.dataFolder()
+	_ = os.MkdirAll(d, 0o755)
+	openFolder(a.ctx, d)
 }
 
 // OpenLink: only the pages the launcher links to.
@@ -146,8 +153,7 @@ func (a *App) start(m *netMatch) string {
 			return
 		}
 		a.setOverlay(false)
-		wruntime.WindowShow(a.ctx)
-		wruntime.WindowUnminimise(a.ctx)
+		a.toForeground()
 		a.emit("game", map[string]any{"running": false, "code": code, "log": logs})
 	})
 	if err != nil {
@@ -167,7 +173,7 @@ func (a *App) start(m *netMatch) string {
 		on := a.overlay
 		a.mu.Unlock()
 		if !on && a.game.running() {
-			wruntime.WindowMinimise(a.ctx)
+			a.toBackground()
 		}
 	}()
 	return ""
@@ -185,7 +191,7 @@ func (a *App) setOverlay(on bool) {
 func (a *App) showOverlay() {
 	a.setOverlay(true)
 	wruntime.WindowShow(a.ctx)
-	toFront(ownWindow())
+	launcherToFront()
 }
 
 // toggleOverlay (Shift+Tab during a game): in front -> back to the game; anywhere else (taskbar, behind the
@@ -194,7 +200,7 @@ func (a *App) toggleOverlay() {
 	if !a.game.running() {
 		return
 	}
-	if inFront(ownWindow()) {
+	if launcherInFront() {
 		a.HideOverlay()
 		return
 	}
@@ -204,7 +210,7 @@ func (a *App) toggleOverlay() {
 func (a *App) HideOverlay() {
 	if a.game.running() {
 		a.setOverlay(false)
-		wruntime.WindowMinimise(a.ctx) // Windows gives the focus back to the game
+		a.toBackground() // the focus goes back to the game
 	}
 }
 

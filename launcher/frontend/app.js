@@ -94,12 +94,23 @@ function note(title, text, kind, actions, seconds, who) {
 const fail = (msg) => { if (msg) note("Algo falló", msg, "bad"); return !msg; };
 
 // ---------------- library page ----------------
-const qualityHints = [
-  "Para gráficas potentes (RTX 3070, RX 6800 o mejor).",
-  "Un buen punto medio.",
-  "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás.",
-  "DLSS con el pase neural de NVIDIA. Necesita una RTX y DLSS 5 Swapper.",
-];
+// the quality presets and a few texts differ per system (State: platform, qualities, fullscreenKey)
+function renderPlatform(s) {
+  const sel = $("s-quality");
+  if (s.qualities && sel.dataset.platform !== s.platform) {
+    sel.dataset.platform = s.platform;
+    sel.textContent = "";
+    s.qualities.forEach((q, i) => { const o = el("option", null, q.name); o.value = String(i); sel.appendChild(o); });
+  }
+  $("banner-sub").textContent = "Dragon Ball Z (Beta 14 Rev2) para " + s.platform;
+  $("full-hint").textContent = s.fullscreenKey + " cambia durante la partida.";
+  const mac = s.platform === "macOS";
+  if (mac) {
+    $("dlss-label").textContent = "Partidas y registros";
+    $("dlss-hint").textContent = s.dataFolder;
+  }
+  return mac;
+}
 
 function renderPlay() {
   const s = st.state;
@@ -108,13 +119,14 @@ function renderPlay() {
   $("btn-play").textContent = s.playing ? "Jugando" : "Jugar";
   $("iso-line").textContent = s.ready ? s.iso : s.iso ? "No encuentro la ISO que elegiste." : "Necesitas tu ISO del mod (SLUS-219.78, Beta 14 Rev2).";
   $("btn-iso").textContent = s.ready ? "Cambiar ISO" : "Seleccionar ISO";
+  const mac = renderPlatform(s);
   $("s-quality").value = String(s.settings.quality);
-  $("q-hint").textContent = qualityHints[s.settings.quality] || "";
+  $("q-hint").textContent = (s.qualities && s.qualities[s.settings.quality] || {}).hint || "";
   $("s-fps60").checked = s.settings.fps60;
   $("s-full").checked = s.settings.fullscreen;
   $("s-delay").value = String(s.settings.netDelay);
   const d = s.dlss;
-  $("dlss-line").textContent = "Versión " + d.version + (d.own ? " (la tuya)" : "") + (d.dlss5 ? " · DLSS 5 disponible" : "");
+  $("dlss-line").textContent = mac ? "Memoria, ajustes y logs/juego.log." : "Versión " + d.version + (d.own ? " (la tuya)" : "") + (d.dlss5 ? " · DLSS 5 disponible" : "");
   $("s-server").value = s.server;
   $("acc-line").textContent = s.loggedIn ? "Conectado como " + s.user : "No has entrado";
   $("btn-logout").classList.toggle("hidden", !s.loggedIn);
@@ -142,7 +154,7 @@ $("btn-iso").addEventListener("click", async () => { const e = await api().Choos
 $("btn-play").addEventListener("click", async () => { fail(await api().Play()); refresh(); });
 $("btn-dlss").addEventListener("click", () => api().OpenDLSSFolder());
 const dc = $("dlss-card");
-["dragenter", "dragover"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); dc.classList.add("drop"); }));
+["dragenter", "dragover"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); if (!st.state || st.state.platform !== "macOS") dc.classList.add("drop"); }));
 ["dragleave", "drop"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); dc.classList.remove("drop"); }));
 
 // ---------------- the account in the title bar ----------------

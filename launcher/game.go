@@ -347,15 +347,14 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	env = append(env, penv...)
 	if m != nil {
 		fps60 = m.Fps60 // both players must run the same mode: the match decides
-		delay := m.Delay
-		if delay == 0 {
-			delay = s.NetDelay
-		}
-		if delay == 0 {
-			delay = 3 // a few frames cover an internet round trip through the relay
+		// the input delay: the match's (the inviter's setting) or, at 0 = "Automático", measured by the two games
+		// on the real path when they connect (player 1 pings player 2 through the relay and both use its choice)
+		delay := "auto"
+		if m.Delay > 0 {
+			delay = strconv.Itoa(m.Delay)
 		}
 		env = append(env, "PS2X_NET_RELAY="+m.Relay, "PS2X_NET_TOKEN="+m.Token, fmt.Sprintf("PS2X_NET_PLAYER=%d", m.Player),
-			fmt.Sprintf("PS2X_NET_DELAY=%d", delay), "NET_OVERLAY=1", "PS2X_NET_JUMP=1")
+			"PS2X_NET_DELAY="+delay, "NET_OVERLAY=1", "PS2X_NET_JUMP=1")
 		// Lockstep needs two identical simulations, whatever each machine's speed or system:
 		//  - the virtual clock (frame-stepped, fibers): the game's threads, disc and sound advance by frames, not by the
 		//    host's clock (without it the RAMs differed by frame 60 as soon as one side was slower);

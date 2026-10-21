@@ -94,9 +94,9 @@ main { flex: 1; overflow-y: auto; background: var(--base); }
 .banner h1 { margin: 0; font-family: "Russo One"; font-weight: 400; font-size: 46px; color: #fff; text-shadow: 3px 3px 0 rgba(0,0,0,.35); }
 .banner p { margin: 4px 0 0; color: #dfe3e7; }
 /* DBZ BT4: the game's art as the header (its logo is in the picture, so the text title is only for screen readers) */
-.banner.dbz { height: 280px; background: #0e121a url("img/dbz-bt4-header.jpg") center 8% / cover no-repeat; }
+.banner.dbz { height: 280px; background: #0e121a url("img/dbz-bt4-header.jpg") center 0% / cover no-repeat; }
 .banner.dbz .banner-lines { display: none; }
-.banner.dbz::after { background: linear-gradient(0deg, var(--base) 0%, rgba(27,40,56,0) 40%); }
+.banner.dbz::after { background: linear-gradient(0deg, var(--base) 0%, rgba(27,40,56,0) 22%); }
 .banner .logo-in-art { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .banner.dbz p { text-shadow: 0 1px 3px rgba(0,0,0,.8); }
 .playline { display: flex; align-items: center; gap: 20px; padding: 14px 28px; background: linear-gradient(90deg, #212e3d, #1b2838); }

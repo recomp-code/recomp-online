@@ -2,8 +2,11 @@ package main
 
 // [update] The launcher updates itself. recomp-online's releases carry recomp-launcher.json:
 //
-//	{"version": "3.1", "files": {"Windows": {"file": "Recomp.exe", "sha256": "...", "size": 123}}}
+//	{"version": "3.1", "files": {"Windows": {"file": "Recomp.exe", "sha256": "...", "size": 123},
+//	                             "macOS": {"file": "DBZ_BT4_Mac.zip", "sha256": "...", "size": 456, "version": "3.0"}}}
 //
+// A file's own "version" (when the release was built on another system and keeps this system's previous file) wins
+// over the manifest's: without it a Mac would take the 3.0 app for 3.1 and download it again at every check.
 // At start (and every 6 hours while it runs) the launcher looks at the latest release; a newer version is
 // downloaded beside the running one, checked (SHA-256), and put in its place (updater_windows.go: the running exe is
 // renamed, which Windows allows, and the new one takes its name; updater_darwin.go: the whole .app is swapped). The
@@ -65,11 +68,14 @@ func (a *App) checkLauncherUpdate() error {
 	if err := getJSON(murl, &m); err != nil {
 		return nil
 	}
-	if !newerVersion(m.Version, launcherVersion) {
-		return nil
-	}
 	pf, ok := m.Files[platformName]
 	if !ok {
+		return nil
+	}
+	if pf.Version != "" { // this system's file is from another version than the release's (see packFile)
+		m.Version = pf.Version
+	}
+	if !newerVersion(m.Version, launcherVersion) {
 		return nil
 	}
 	var furl string

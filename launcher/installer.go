@@ -36,6 +36,9 @@ type packFile struct {
 	File   string `json:"file"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
+	// Version: recomp-launcher.json only, the version of this system's file when it is not the manifest's (a release
+	// built on one system keeps another system's previous file: that system must not take it for the new version)
+	Version string `json:"version,omitempty"`
 }
 
 type gameManifest struct {

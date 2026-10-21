@@ -29,7 +29,18 @@ else {
         if ($u) { $prev = Invoke-RestMethod $u -Headers @{ 'User-Agent' = 'make_launcher' } }
     } catch { Write-Warning "could not read the published manifest: $_" }
 }
-if ($prev) { foreach ($p in $prev.files.PSObject.Properties) { if ($p.Name -ne 'Windows') { $files[$p.Name] = $p.Value; "kept the $($p.Name) entry ($($p.Value.file))" } } }
+# A kept entry is still the previous version's file: it carries that version ("version", updater.go), or that system
+# would take it for this one and download it again at every check. Its file must be uploaded to the new release too.
+if ($prev) {
+    foreach ($p in $prev.files.PSObject.Properties) {
+        if ($p.Name -eq 'Windows') { continue }
+        $e = [ordered]@{}
+        foreach ($q in $p.Value.PSObject.Properties) { $e[$q.Name] = $q.Value }
+        if (-not $e.Contains('version')) { $e['version'] = $prev.version }
+        $files[$p.Name] = $e
+        "kept the $($p.Name) entry ($($e.file), version $($e.version)): upload $($e.file) to this release too"
+    }
+}
 $files['Windows'] = [ordered]@{ file = 'Recomp.exe'; sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower(); size = $exe.Length }
 $manifest = [ordered]@{ version = $version; files = $files }
 [IO.File]::WriteAllText("$Out\recomp-launcher.json", ($manifest | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))

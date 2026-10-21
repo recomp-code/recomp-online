@@ -262,6 +262,7 @@ type netMatch struct {
 	Player           int
 	Fps60            bool
 	Delay            int
+	CardDir          string // [netcard] the memory card both games boot from (matchCard)
 }
 
 var (
@@ -355,6 +356,18 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		}
 		env = append(env, "PS2X_NET_RELAY="+m.Relay, "PS2X_NET_TOKEN="+m.Token, fmt.Sprintf("PS2X_NET_PLAYER=%d", m.Player),
 			fmt.Sprintf("PS2X_NET_DELAY=%d", delay), "NET_OVERLAY=1", "PS2X_NET_JUMP=1")
+		// Lockstep needs two identical simulations, whatever each machine's speed or system:
+		//  - the virtual clock (frame-stepped, fibers): the game's threads, disc and sound advance by frames, not by the
+		//    host's clock (without it the RAMs differed by frame 60 as soon as one side was slower);
+		//  - the same random seed and clock (both read the host's time otherwise), from the match token;
+		//  - the same memory card (matchCard);
+		//  - and the two compare a hash of the game state every second, so any difference shows at once.
+		seed, rtc := matchSeeds(m.Token)
+		env = append(env, "PS2X_FRAMESTEP=1", "PS2X_FIBERS=1", "PS2X_DETHASH=60",
+			fmt.Sprintf("PS2X_RANDSEED=%d", seed), fmt.Sprintf("PS2X_RTC=%d", rtc))
+		if m.CardDir != "" {
+			env = append(env, "PS2X_MC_ROOT="+m.CardDir)
+		}
 	}
 	env = append(env, "PS2X_FPS60="+b01(fps60))
 	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, "SLUS_216.78"))

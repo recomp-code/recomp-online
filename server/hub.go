@@ -80,6 +80,44 @@ type match struct {
 	Started  time.Time `json:"started"`
 	token    string
 	endedBy  map[string]bool
+	card     []byte // [netcard] player 1's memory card for this match (both games boot from it); in memory only
+}
+
+// maxCard: a BT4 save is 16 KB plus its icon; anything near this is not a memory card.
+const maxCard = 512 << 10
+
+var errNoMatch = errors.New("esa partida ya no existe")
+
+// setCard: player 1 hands in the memory card both games of the match boot from. Once per match.
+func (h *hub) setCard(user, id string, card []byte) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	m := h.matches[id]
+	if m == nil {
+		return errNoMatch
+	}
+	if !strings.EqualFold(user, m.P1) {
+		return errors.New("la memory card la pone el jugador 1")
+	}
+	if m.card != nil {
+		return errors.New("esta partida ya tiene memory card")
+	}
+	m.card = append([]byte(nil), card...)
+	return nil
+}
+
+// card: the match's memory card, for its two players; nil (and no error) while player 1 has not sent it yet.
+func (h *hub) card(user, id string) ([]byte, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	m := h.matches[id]
+	if m == nil {
+		return nil, errNoMatch
+	}
+	if !strings.EqualFold(user, m.P1) && !strings.EqualFold(user, m.P2) {
+		return nil, errNoMatch // not a player of this match: it does not exist for them
+	}
+	return m.card, nil
 }
 
 type hub struct {

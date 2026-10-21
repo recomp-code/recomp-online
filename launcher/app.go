@@ -249,7 +249,18 @@ func (a *App) onNetEvent(ev map[string]any) {
 			a.setOverlay(false)
 			wruntime.WindowShow(a.ctx)
 			a.emit("match_countdown", map[string]any{"opponent": mm["opponent"], "player": m.Player})
-			time.Sleep(3 * time.Second)
+			t0 := time.Now()
+			// [netcard] during the countdown: player 1 shares its memory card, player 2 fetches it
+			dir, err := a.matchCard(m)
+			if err != nil {
+				a.emit("toast", map[string]any{"kind": "bad", "text": err.Error()})
+				_ = a.net.call("/api/match/end", map[string]string{"id": m.ID}, nil)
+				return
+			}
+			m.CardDir = dir
+			if rest := 3*time.Second - time.Since(t0); rest > 0 {
+				time.Sleep(rest)
+			}
 			if msg := a.start(m); msg != "" {
 				a.emit("toast", map[string]any{"kind": "bad", "text": msg})
 				_ = a.net.call("/api/match/end", map[string]string{"id": m.ID}, nil)

@@ -183,6 +183,40 @@ func (o *online) call(path string, body, out any) error {
 	return nil
 }
 
+// raw: a request with a binary body (the match's memory card). got(status, body) sees any 2xx answer; other
+// statuses come back as the server's error.
+func (o *online) raw(method, path string, body []byte, got func(int, []byte)) error {
+	o.mu.Lock()
+	server, tok := o.cfg.Server, o.token
+	o.mu.Unlock()
+	req, err := http.NewRequest(method, server+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	resp, err := o.http.Do(req)
+	if err != nil {
+		return errors.New("no hay conexión con el servidor")
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		var e struct{ Error string }
+		_ = json.Unmarshal(data, &e)
+		if e.Error == "" {
+			e.Error = fmt.Sprintf("error del servidor (%d)", resp.StatusCode)
+		}
+		return apiError{e.Error}
+	}
+	if got != nil {
+		got(resp.StatusCode, data)
+	}
+	return nil
+}
+
 func (o *online) loggedIn() (string, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -218,6 +219,33 @@ func (a *api) routes() http.Handler {
 		}
 		a.hub.friendsChanged(u)
 		writeJSONResp(w, 200, map[string]any{"friends": a.st.friends(u)})
+	}))
+	// [netcard] the memory card both games of a match boot from: player 1 uploads its own (raw bytes, the launcher's
+	// format), player 2 downloads it before starting. Same data on both machines = the same boot.
+	mux.HandleFunc("POST /api/match/card", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCard))
+		if err != nil {
+			fail(w, 413, errors.New("esa memory card es demasiado grande"))
+			return
+		}
+		if err := a.hub.setCard(u, r.URL.Query().Get("id"), data); err != nil {
+			fail(w, 409, err)
+			return
+		}
+		writeJSONResp(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("GET /api/match/card", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		card, err := a.hub.card(u, r.URL.Query().Get("id"))
+		if err != nil {
+			fail(w, 404, err)
+			return
+		}
+		if card == nil {
+			w.WriteHeader(http.StatusNoContent) // not sent yet: ask again in a moment
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(card)
 	}))
 	if a.lookups == nil {
 		a.lookups = newLimiterN(60)

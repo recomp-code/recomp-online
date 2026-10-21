@@ -446,3 +446,50 @@ func TestPlayerSearch(t *testing.T) {
 		t.Fatalf("friend flag: %v", rows)
 	}
 }
+
+// the match's memory card: only player 1 sets it, once; only the two players read it; 204 until it is there.
+func TestMatchCard(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Goku", "kamehameha", "dbzbt4", "b1")
+	b := newTClient(t, base, "Vegeta", "finalflash", "dbzbt4", "b1")
+	c := newTClient(t, base, "Krilin", "destructo1", "dbzbt4", "b1")
+	post(t, base, "/api/invite", a.token, map[string]any{"to": "Vegeta"})
+	inv := b.wait("invite")["invite"].(map[string]any)
+	post(t, base, "/api/invite/respond", b.token, map[string]any{"id": inv["id"], "accept": true})
+	id := a.wait("match")["match"].(map[string]any)["id"].(string)
+
+	do := func(method, token string, body []byte) (int, []byte) {
+		req, _ := http.NewRequest(method, base+"/api/match/card?id="+id, bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(resp.Body)
+		return resp.StatusCode, buf.Bytes()
+	}
+	if code, _ := do("GET", b.token, nil); code != 204 {
+		t.Fatalf("before upload: %d", code)
+	}
+	if code, _ := do("POST", b.token, []byte("x")); code != 409 {
+		t.Fatalf("player 2 set the card: %d", code)
+	}
+	card := bytes.Repeat([]byte("MC"), 9000)
+	if code, _ := do("POST", a.token, card); code != 200 {
+		t.Fatalf("upload: %d", code)
+	}
+	if code, _ := do("POST", a.token, card); code != 409 {
+		t.Fatalf("second upload: %d", code)
+	}
+	if code, got := do("GET", b.token, nil); code != 200 || !bytes.Equal(got, card) {
+		t.Fatalf("download: %d, %d bytes", code, len(got))
+	}
+	if code, _ := do("GET", c.token, nil); code != 404 {
+		t.Fatalf("someone else read the card: %d", code)
+	}
+	if code, _ := do("POST", a.token, bytes.Repeat([]byte{0}, maxCard+1)); code != 413 && code != 409 {
+		t.Fatalf("oversized card: %d", code)
+	}
+}

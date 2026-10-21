@@ -114,6 +114,18 @@ func (g *game) setupRuntime() error {
 	return nil
 }
 
+// touchISO reads the start of the ISO from the launcher. macOS asks each app once for its Downloads, Documents or
+// Desktop folder (and again after an update of an ad-hoc signed app); the game runs as part of the launcher, so the
+// question would otherwise come at the game's first disc read, with the game stuck at frame 0 -- online, long enough
+// for the other player to give up. Asked here, it shows while the launcher is in front, before the match connects.
+func touchISO(path string) {
+	if f, err := os.Open(path); err == nil {
+		b := make([]byte, 2048)
+		_, _ = f.ReadAt(b, 16*2048) // the ISO 9660 volume descriptor
+		f.Close()
+	}
+}
+
 // copyWritable copies the bytes, not the permissions: the app's own files may be read-only.
 func copyWritable(src, dst string) error {
 	b, err := os.ReadFile(src)
@@ -127,6 +139,7 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 	if err := g.setupRuntime(); err != nil {
 		return "", "", nil, err
 	}
+	touchISO(s.ISO)
 	name := qualityIni[s.Quality]
 	ini := filepath.Join(g.gshostDir, name)
 	if !fileExists(ini) {
@@ -139,9 +152,13 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 	return ini, `-ini "` + ini + `"`, env, nil
 }
 
-// prepareCmd: the runtime and the GS host write to logs/juego.log (their standard output and error).
+// prepareCmd: the runtime and the GS host write to logs/juego.log (their standard output and error). The previous
+// game's log stays as juego-anterior.log: after an online match that went wrong the player often starts another game
+// before anyone looks at it.
 func (g *game) prepareCmd(cmd *exec.Cmd) func() {
-	f, err := os.Create(filepath.Join(g.logs, "juego.log"))
+	log := filepath.Join(g.logs, "juego.log")
+	_ = os.Rename(log, filepath.Join(g.logs, "juego-anterior.log"))
+	f, err := os.Create(log)
 	if err != nil {
 		return func() {}
 	}

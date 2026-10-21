@@ -310,15 +310,26 @@ func (a *App) onNetEvent(ev map[string]any) {
 			return
 		}
 		go func() {
-			if a.game.running() { // an offline game is open: the match replaces it
-				a.game.stop()
-				for i := 0; i < 50 && a.game.running(); i++ {
-					time.Sleep(100 * time.Millisecond)
+			// an offline game is open: the match replaces it IN ITS WINDOW (handover) -- the new game boots from zero,
+			// as lockstep needs, but the window stays and says "Preparando la partida"; the launcher stays out of the
+			// way. Only if that is not possible, the old way: close it and open the match's game.
+			inGame := false
+			if a.game.running() {
+				inGame = a.game.handover()
+				if !inGame {
+					a.game.stop()
+					for i := 0; i < 50 && a.game.running(); i++ {
+						time.Sleep(100 * time.Millisecond)
+					}
 				}
 			}
 			a.setOverlay(false)
-			wruntime.WindowShow(a.ctx)
-			a.emit("match_countdown", map[string]any{"opponent": mm["opponent"], "player": m.Player})
+			if inGame {
+				a.toBackground()
+			} else {
+				wruntime.WindowShow(a.ctx)
+				a.emit("match_countdown", map[string]any{"opponent": mm["opponent"], "player": m.Player})
+			}
 			t0 := time.Now()
 			// [netcard] during the countdown: player 1 shares its memory card, player 2 fetches it
 			dir, err := a.matchCard(m)

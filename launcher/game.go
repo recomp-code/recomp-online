@@ -45,6 +45,8 @@ type game struct {
 	// res the app's Resources (a downloaded app runs from a read-only copy). paths_*.go sets them.
 	root, home, res, runtimeDir, dataDir, gshostDir, cfgPath, dlssDir, logs, runner, sites string
 	mu                                                                                     sync.Mutex
+	attach                                                                                 string // [handover] the ring the next game takes over
+	handingOver                                                                            bool   // [handover] the running game is leaving its window
 	cfg                                                                                    Settings
 	proc                                                                                   *os.Process
 }
@@ -393,6 +395,15 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
 	}
 	env = append(env, "PS2X_FPS60="+b01(fps60))
+	// [handover] every game can leave its window to the next one (handover), and the next one takes it over
+	_ = os.Remove(g.handoverPath())
+	env = append(env, "PS2X_LIVE_RING_FILE="+g.ringPath(), "PS2X_HANDOVER_FILE="+g.handoverPath())
+	g.mu.Lock()
+	if g.attach != "" {
+		env = append(env, "PS2X_LIVE_ATTACH="+g.attach)
+		g.attach = ""
+	}
+	g.mu.Unlock()
 	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, "SLUS_216.78"))
 	cmd.Dir, cmd.Env = g.runtimeDir, env
 	cleanup := g.prepareCmd(cmd)
@@ -416,7 +427,12 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		cleanup()
 		g.mu.Lock()
 		g.proc = nil
+		handedOver := g.handingOver
+		g.handingOver = false
 		g.mu.Unlock()
+		if handedOver { // [handover] it left its window to the next game: not a game that ended
+			return
+		}
 		g.readBackFps60(hostIni)
 		_ = started
 		done(code, filepath.Join(g.logs, "juego.log"))
@@ -443,6 +459,48 @@ func (g *game) readBackFps60(iniPath string) {
 
 // netStatusPath: where an online game says whether it is still online (PS2X_NET_STATUS_FILE, see watchOnline).
 func (g *game) netStatusPath() string { return filepath.Join(g.logs, "online.status") }
+
+// [handover] The game window outlives the game: the running game writes its window's ring name into ringPath
+// (PS2X_LIVE_RING_FILE) and leaves the window when handoverPath appears (PS2X_HANDOVER_FILE); the next game is
+// started with PS2X_LIVE_ATTACH=<ring> and draws into the same window. For an online match accepted during an
+// offline game: the new game must boot from zero (both players' games have to be identical), but the player never
+// sees the window close.
+func (g *game) ringPath() string     { return filepath.Join(g.logs, "gshost.ring") }
+func (g *game) handoverPath() string { return filepath.Join(g.logs, "handover.req") }
+
+// handover asks the running game to leave its window and waits for it to exit; true: the next play() attaches to
+// that window. False (no window to hand over, an older runtime, or it did not leave in time): stop it the old way.
+func (g *game) handover() bool {
+	b, err := os.ReadFile(g.ringPath())
+	if err != nil || !g.running() {
+		return false
+	}
+	ring := strings.Fields(string(b))
+	if len(ring) == 0 {
+		return false
+	}
+	g.mu.Lock()
+	g.handingOver = true
+	g.mu.Unlock()
+	if os.WriteFile(g.handoverPath(), []byte("1"), 0o644) != nil {
+		g.mu.Lock()
+		g.handingOver = false
+		g.mu.Unlock()
+		return false
+	}
+	for i := 0; i < 60 && g.running(); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.proc != nil { // still running: it did not hand over
+		g.handingOver = false
+		_ = os.Remove(g.handoverPath())
+		return false
+	}
+	g.attach = ring[0]
+	return true
+}
 
 func (g *game) stop() {
 	g.mu.Lock()

@@ -1,11 +1,6 @@
 # HTTPS para el API de recomp-online (certificado gratis de Let's Encrypt, se renueva solo).
-# install.sh cambia TU_DOMINIO. El puerto 80 lo usa el servidor de NBA Street, así que Caddy no lo toca:
-# el certificado se pide por el 443 (desafío TLS-ALPN) y no hay redirección de http a https.
-{
-	http_port 8081
-	auto_https disable_redirects
-}
-
+# install.sh lo copia a /etc/caddy/recomp-online.caddy con TU_DOMINIO cambiado y lo IMPORTA desde el Caddyfile
+# principal: tus otros sitios no se tocan.
 TU_DOMINIO {
 	# el lobby en vivo va por WebSocket (/api/ws): Caddy lo pasa tal cual, sin búfer
 	reverse_proxy 127.0.0.1:8090 {

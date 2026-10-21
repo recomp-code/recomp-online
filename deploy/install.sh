@@ -78,15 +78,30 @@ elif ! command -v caddy >/dev/null 2>&1; then
 fi
 if [ "${SIN_CADDY:-}" = "1" ]; then
     :
-elif [ -f /etc/caddy/Caddyfile ] && ! grep -q 'recomp-online' /etc/caddy/Caddyfile && ! grep -q 'root \* /usr/share/caddy' /etc/caddy/Caddyfile; then
-    # ya hay un Caddyfile propio: no se toca, se deja el bloque para añadirlo a mano
-    sed "s/TU_DOMINIO/$DOMAIN/g" "$HERE/Caddyfile" > /etc/caddy/recomp-online.caddy
-    echo "AVISO: ya tienes un /etc/caddy/Caddyfile propio. Añade el bloque de /etc/caddy/recomp-online.caddy y recarga Caddy."
 else
-    if [ -f /etc/caddy/Caddyfile ]; then cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.antes-recomp-online"; fi
-    { echo "# recomp-online"; sed "s/TU_DOMINIO/$DOMAIN/g" "$HERE/Caddyfile"; } > /etc/caddy/Caddyfile
+    # Nuestro sitio va en su propio archivo y el Caddyfile principal solo lo IMPORTA (una línea, una vez). Nunca se
+    # reescribe el Caddyfile de nadie: antes, un Caddyfile que mencionaba "recomp-online" se tomaba por nuestro y se
+    # sobrescribía, borrando los otros sitios.
+    SITE=/etc/caddy/recomp-online.caddy
+    MAIN=/etc/caddy/Caddyfile
+    IMPORT="import $SITE"
+    sed "s/TU_DOMINIO/$DOMAIN/g" "$HERE/Caddyfile" > "$SITE"
+    if [ -f "$MAIN" ]; then cp "$MAIN" "$MAIN.antes-recomp-online"; fi
+    if [ ! -f "$MAIN" ] || grep -q 'root \* /usr/share/caddy' "$MAIN"; then
+        # sin Caddyfile, o el de ejemplo del paquete: uno nuevo. El 80 es del servidor de NBA: el certificado se pide
+        # por el 443 (TLS-ALPN) y no hay redirección de http a https.
+        printf '{\n\thttp_port 8081\n\tauto_https disable_redirects\n}\n\n%s\n' "$IMPORT" > "$MAIN"
+    elif ! grep -qxF "$IMPORT" "$MAIN"; then
+        printf '\n# recomp-online (install.sh)\n%s\n' "$IMPORT" >> "$MAIN"
+    fi
+    if ! caddy validate --config "$MAIN" --adapter caddyfile >/dev/null 2>&1; then
+        echo "La configuración de Caddy no es válida con nuestro sitio; dejo tu Caddyfile como estaba:" >&2
+        caddy validate --config "$MAIN" --adapter caddyfile >&2 || true
+        if [ -f "$MAIN.antes-recomp-online" ]; then cp "$MAIN.antes-recomp-online" "$MAIN"; fi
+        exit 1
+    fi
     systemctl enable caddy >/dev/null
-    systemctl restart caddy
+    systemctl reload caddy 2>/dev/null || systemctl restart caddy
 fi
 
 echo "== 4/4 firewall"

@@ -31,6 +31,9 @@ func main() {
 		log.Fatalf("relay: %v", err)
 	}
 	h := newHub(st, rl, *relayPublic)
+	if h.stats, err = openStats(*dataDir); err != nil {
+		log.Fatalf("estadísticas: %v", err)
+	}
 	a := &api{st: st, hub: h, limiter: newLimiter(), conns: newConnLimit()}
 	srv := &http.Server{Addr: *httpAddr, Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("recomp-online: API %s, relay UDP %s (público %s), datos %s", *httpAddr, *relayAddr, *relayPublic, *dataDir)

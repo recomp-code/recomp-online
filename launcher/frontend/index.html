@@ -118,7 +118,10 @@
       <div class="lobby hidden" id="lobby">
         <div class="lobby-top">
           <span class="conn" id="conn"><i></i><span id="conn-text">conectando…</span></span>
-          <label class="seek"><input type="checkbox" id="s-waiting"><span>Buscar partida</span></label>
+          <div class="top-act">
+            <button class="txtbtn" id="btn-stats" type="button">Estadísticas</button>
+            <label class="seek"><input type="checkbox" id="s-waiting"><span>Buscar partida</span></label>
+          </div>
         </div>
         <div class="split">
           <div class="box">
@@ -195,6 +198,17 @@
     <input id="mp-pass" type="password" maxlength="64" placeholder="Contraseña">
     <div class="err" id="mp-err"></div>
     <div class="btnrow"><button class="btn blue" id="btn-mp-ok" type="button">Entrar</button><button class="btn" id="btn-mp-cancel" type="button">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="m-stats">
+  <div class="dlg stats">
+    <h3 id="st-title">Tus estadísticas</h3>
+    <div class="st-me" id="st-me"></div>
+    <div class="sub-h">Tablero</div>
+    <div class="st-top" id="st-top"></div>
+    <small>Solo cuentan las peleas en línea en las que los juegos de los dos dieron el mismo resultado. Toca a un jugador para ver sus números.</small>
+    <div class="btnrow"><button class="btn" id="btn-stats-close" type="button">Cerrar</button></div>
   </div>
 </div>
 

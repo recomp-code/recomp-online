@@ -404,6 +404,9 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		}
 		_ = os.Remove(g.netStatusPath()) // a previous match's "offline" must not end this one
 		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
+		// [stats] the game writes each fight's result here (watchOnline sends them to the server)
+		_ = os.Remove(g.netFightsPath())
+		env = append(env, "PS2X_NET_STATS_FILE="+g.netFightsPath())
 	}
 	env = append(env, "PS2X_FPS60="+b01(fps60), "PS2X_UNLOCK_ALL="+b01(unlock))
 	// [handover] every game can leave its window to the next one (handover), and the next one takes it over
@@ -470,6 +473,10 @@ func (g *game) readBackFps60(iniPath string) {
 
 // netStatusPath: where an online game says whether it is still online (PS2X_NET_STATUS_FILE, see watchOnline).
 func (g *game) netStatusPath() string { return filepath.Join(g.logs, "online.status") }
+
+// netFightsPath: where an online game writes the result of each fight (PS2X_NET_STATS_FILE), one line each:
+// "fight <n> winner=<1|2|0> c1=<character> c2=<character> ...".
+func (g *game) netFightsPath() string { return filepath.Join(g.logs, "online.fights") }
 
 // [handover] The game window outlives the game: the running game writes its window's ring name into ringPath
 // (PS2X_LIVE_RING_FILE) and leaves the window when handoverPath appears (PS2X_HANDOVER_FILE); the next game is

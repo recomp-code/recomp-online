@@ -138,6 +138,7 @@ function renderPlay() {
   $("q-hint").textContent = (s.qualities && s.qualities[s.settings.quality] || {}).hint || "";
   $("s-fps60").checked = s.settings.fps60;
   $("s-full").checked = s.settings.fullscreen;
+  $("s-unlock").checked = s.settings.unlock;
   $("s-delay").value = String(s.settings.netDelay);
   const d = s.dlss;
   $("dlss-line").textContent = mac ? "Memoria, ajustes y logs/juego.log." : "Versión " + d.version + (d.own ? " (la tuya)" : "") + (d.dlss5 ? " · DLSS 5 disponible" : "");
@@ -160,10 +161,11 @@ async function saveSettings() {
   s.quality = parseInt($("s-quality").value, 10);
   s.fps60 = $("s-fps60").checked;
   s.fullscreen = $("s-full").checked;
+  s.unlock = $("s-unlock").checked;
   s.netDelay = parseInt($("s-delay").value, 10);
   if (fail(await api().SaveSettings(s))) refresh();
 }
-["s-quality", "s-fps60", "s-full", "s-delay"].forEach((id) => $(id).addEventListener("change", saveSettings));
+["s-quality", "s-fps60", "s-unlock", "s-full", "s-delay"].forEach((id) => $(id).addEventListener("change", saveSettings));
 $("btn-iso").addEventListener("click", async () => { const e = await api().ChooseISO(); if (e) fail(e); refresh(); });
 $("btn-play").addEventListener("click", async () => { fail(await api().Play()); refresh(); });
 $("btn-dlss").addEventListener("click", () => api().OpenDLSSFolder());

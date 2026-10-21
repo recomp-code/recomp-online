@@ -354,7 +354,10 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 			delay = strconv.Itoa(m.Delay)
 		}
 		env = append(env, "PS2X_NET_RELAY="+m.Relay, "PS2X_NET_TOKEN="+m.Token, fmt.Sprintf("PS2X_NET_PLAYER=%d", m.Player),
-			"PS2X_NET_DELAY="+delay, "NET_OVERLAY=1", "PS2X_NET_JUMP=1")
+			"PS2X_NET_DELAY="+delay, "NET_OVERLAY=1", "PS2X_NET_JUMP=1",
+			// the jump stops at the game's multiplayer menu: player 1 picks Simple / Equipos / Equipos PD there, as on
+			// the console, and both go on to character select together
+			"PS2X_NET_JUMP_STOP=menu")
 		// Lockstep needs two identical simulations, whatever each machine's speed or system:
 		//  - the virtual clock (frame-stepped, fibers): the game's threads, disc and sound advance by frames, not by the
 		//    host's clock (without it the RAMs differed by frame 60 as soon as one side was slower);

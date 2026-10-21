@@ -62,6 +62,20 @@ $("w-min").addEventListener("click", () => rt().WindowMinimise());
 $("w-close").addEventListener("click", () => api().Quit());
 $("l-github").addEventListener("click", (e) => { e.preventDefault(); api().OpenLink("github"); });
 $("btn-back-game").addEventListener("click", () => api().HideOverlay());
+// leaving an online match closes the game: asked twice, so a stray press of A on the pad cannot end it
+let leaveArmed = 0;
+$("btn-leave-match").addEventListener("click", () => {
+  const b = $("btn-leave-match");
+  if (Date.now() - leaveArmed > 4000) {
+    leaveArmed = Date.now();
+    b.textContent = "¿Seguro? Pulsa otra vez para salir";
+    setTimeout(() => { if (Date.now() - leaveArmed >= 4000) b.textContent = "Salir de la partida online"; }, 4100);
+    return;
+  }
+  leaveArmed = 0;
+  b.textContent = "Salir de la partida online";
+  api().LeaveMatch();
+});
 
 // ---------------- avatars ----------------
 function hue(n) { let h = 7; for (const c of n || "") h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
@@ -499,6 +513,7 @@ function boot() {
   rt().EventsOn("game", (g) => {
     if (g.running) note("Abriendo el juego", "Back + Start en el mando (o Shift+Tab) te trae aquí durante la partida, para ver quién está en línea o invitar.", "good", null, 6);
     if (!g.running && g.code) note("El juego se cerró con un error", "Mira el registro: " + g.log, "bad", null, 12);
+    $("btn-leave-match").classList.toggle("hidden", !(g.running && g.online));
     refresh();
   });
   rt().EventsOn("overlay", (on) => { $("overlay-banner").classList.toggle("hidden", !on); if (on) show("online"); });

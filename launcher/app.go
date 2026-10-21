@@ -207,6 +207,17 @@ func (a *App) toggleOverlay() {
 	a.showOverlay()
 }
 
+// LeaveMatch (the overlay's "Salir de la partida online"): closes the game; the match ends on the server when it
+// exits (start's done), and the other game sees the session drop and plays on offline.
+func (a *App) LeaveMatch() {
+	a.mu.Lock()
+	online := a.match != nil
+	a.mu.Unlock()
+	if online {
+		a.game.stop()
+	}
+}
+
 func (a *App) HideOverlay() {
 	if a.game.running() {
 		a.setOverlay(false)
@@ -229,6 +240,7 @@ func (a *App) onNetEvent(ev map[string]any) {
 		if p, ok := mm["player"].(float64); ok {
 			m.Player = int(p)
 		}
+		m.Opponent, _ = mm["opponent"].(string)
 		if st, ok := mm["settings"].(map[string]any); ok {
 			m.Fps60, _ = st["fps60"].(bool)
 			if d, ok := st["delay"].(float64); ok {

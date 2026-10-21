@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
@@ -256,6 +257,20 @@ func copyTree(src, dst string) error {
 
 // ---- playing ----
 
+// safeName: a player name as it may go into the game's environment and on screen -- printable runes only, 24 at most.
+func safeName(s string) string {
+	out := make([]rune, 0, 24)
+	for _, r := range s {
+		if len(out) == 24 {
+			break
+		}
+		if unicode.IsPrint(r) {
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
 // netMatch is a match from the online server, already validated.
 type netMatch struct {
 	ID, Relay, Token string
@@ -263,6 +278,7 @@ type netMatch struct {
 	Fps60            bool
 	Delay            int
 	CardDir          string // [netcard] the memory card both games boot from (matchCard)
+	Opponent         string // the other player's name, for the game's "waiting for ..." banner
 }
 
 var (
@@ -357,7 +373,10 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 			"PS2X_NET_DELAY="+delay, "NET_OVERLAY=1", "PS2X_NET_JUMP=1",
 			// the jump stops at the game's multiplayer menu: player 1 picks Simple / Equipos / Equipos PD there, as on
 			// the console, and both go on to character select together
-			"PS2X_NET_JUMP_STOP=menu")
+			"PS2X_NET_JUMP_STOP=menu",
+			// and each game boots on its own: the two meet at that menu ("waiting for <opponent>" until the other one
+			// is there), instead of one waiting before the boot for the other to start
+			"PS2X_NET_MEET=menu", "PS2X_NET_PEER_NAME="+safeName(m.Opponent))
 		// Lockstep needs two identical simulations, whatever each machine's speed or system:
 		//  - the virtual clock (frame-stepped, fibers): the game's threads, disc and sound advance by frames, not by the
 		//    host's clock (without it the RAMs differed by frame 60 as soon as one side was slower);

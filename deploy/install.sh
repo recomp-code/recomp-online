@@ -76,14 +76,19 @@ elif ! command -v caddy >/dev/null 2>&1; then
         exit 1
     fi
 fi
+SITE=/etc/caddy/recomp-online.caddy
+MAIN=/etc/caddy/Caddyfile
+# El dominio ya está en otra configuración de Caddy (p. ej. un bloque escrito a mano en el Caddyfile): importar el
+# nuestro lo duplicaría y la validación fallaría. Esa configuración ya sirve el sitio: no se toca.
+OTRO="$(grep -lsF "$DOMAIN" /etc/caddy/* 2>/dev/null | grep -vxF "$SITE" | head -n1 || true)"
 if [ "${SIN_CADDY:-}" = "1" ]; then
     :
+elif [ -n "$OTRO" ]; then
+    echo "($DOMAIN ya está configurado en $OTRO: Caddy se queda como está)"
 else
     # Nuestro sitio va en su propio archivo y el Caddyfile principal solo lo IMPORTA (una línea, una vez). Nunca se
     # reescribe el Caddyfile de nadie: antes, un Caddyfile que mencionaba "recomp-online" se tomaba por nuestro y se
     # sobrescribía, borrando los otros sitios.
-    SITE=/etc/caddy/recomp-online.caddy
-    MAIN=/etc/caddy/Caddyfile
     IMPORT="import $SITE"
     sed "s/TU_DOMINIO/$DOMAIN/g" "$HERE/Caddyfile" > "$SITE"
     if [ -f "$MAIN" ]; then cp "$MAIN" "$MAIN.antes-recomp-online"; fi
@@ -100,8 +105,16 @@ else
         if [ -f "$MAIN.antes-recomp-online" ]; then cp "$MAIN.antes-recomp-online" "$MAIN"; fi
         exit 1
     fi
-    systemctl enable caddy >/dev/null
-    systemctl reload caddy 2>/dev/null || systemctl restart caddy
+    # Recargar por la API de Caddy sirve sea cual sea la unidad que lo arranca (en algunas máquinas no hay
+    # caddy.service: Caddy va dentro del servicio de otra web). Solo si eso falla, el servicio del paquete.
+    if caddy reload --config "$MAIN" --adapter caddyfile >/dev/null 2>&1; then
+        :
+    elif systemctl cat caddy.service >/dev/null 2>&1; then
+        systemctl enable caddy >/dev/null
+        systemctl reload caddy 2>/dev/null || systemctl restart caddy
+    else
+        echo "No pude recargar Caddy: recárgalo tú (caddy reload --config $MAIN)." >&2
+    fi
 fi
 
 echo "== 4/4 firewall"

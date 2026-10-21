@@ -25,6 +25,12 @@ func (g *game) cardRoot() string { return filepath.Join(g.runtimeDir, "savedata"
 
 // packCard zips the game's save folders (not the runtime's settings or logs). An empty card is an empty zip: still
 // the same on both sides.
+// hostJunk: files an operating system leaves in folders on its own, never part of a PS2 memory card.
+func hostJunk(name string) bool {
+	l := strings.ToLower(name)
+	return strings.HasPrefix(name, ".") || l == "thumbs.db" || l == "desktop.ini"
+}
+
 func packCard(root string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -36,7 +42,9 @@ func packCard(root string) ([]byte, error) {
 		dir := filepath.Join(root, e.Name())
 		files, _ := os.ReadDir(dir)
 		for _, f := range files {
-			if f.IsDir() {
+			// the host's own files (.DS_Store, ._* AppleDouble, Thumbs.db, desktop.ini) are not part of a PS2 save:
+			// shared, they make the two games see different cards
+			if f.IsDir() || hostJunk(f.Name()) {
 				continue
 			}
 			b, err := os.ReadFile(filepath.Join(dir, f.Name()))
@@ -73,6 +81,9 @@ func unpackCard(data []byte, dir string) error {
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.ContainsAny(f.Name, `\:`) ||
 			parts[0] == ".." || parts[1] == ".." || f.UncompressedSize64 > maxCardBytes {
 			return errors.New("la memory card de la partida no es válida")
+		}
+		if hostJunk(parts[1]) { // a card packed by an older launcher may carry them
+			continue
 		}
 		rc, err := f.Open()
 		if err != nil {

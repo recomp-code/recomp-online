@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -236,8 +237,11 @@ func (a *App) toggleOverlay() {
 // once and the launcher stops showing it as being played, though the game stays open offline.
 func (a *App) watchOnline(m *netMatch) {
 	path := a.game.netStatusPath()
+	sent := 0
+	defer func() { a.sendFights(m, &sent) }() // the last fight, written as the game closed or went offline
 	for a.game.running() {
 		time.Sleep(time.Second)
+		a.sendFights(m, &sent)
 		b, err := os.ReadFile(path)
 		if err != nil || !strings.HasPrefix(string(b), "offline") {
 			continue
@@ -255,6 +259,36 @@ func (a *App) watchOnline(m *netMatch) {
 		a.emit("game_offline", map[string]any{"why": strings.TrimSpace(strings.TrimPrefix(string(b), "offline"))})
 		return
 	}
+}
+
+// sendFights: the fights the game wrote since the last call go to the server, which counts each one once both
+// players' games reported the same result (the online statistics).
+func (a *App) sendFights(m *netMatch, sent *int) {
+	b, err := os.ReadFile(a.game.netFightsPath())
+	if err != nil {
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	for *sent < len(lines) {
+		var n, winner, c1, c2 int
+		if _, err := fmt.Sscanf(lines[*sent], "fight %d winner=%d c1=%d c2=%d", &n, &winner, &c1, &c2); err != nil {
+			*sent++
+			continue
+		}
+		if err := a.net.call("/api/match/fight", map[string]any{"id": m.ID, "n": n, "winner": winner, "c1": c1, "c2": c2}, nil); err != nil {
+			return // the server is out of reach for a moment: again on the next call
+		}
+		*sent++
+	}
+}
+
+// Stats: the online table of this game (the best 50) and one player's own line (user "" = the player).
+func (a *App) Stats(user string) map[string]any {
+	var out map[string]any
+	if err := a.net.call("/api/stats", map[string]string{"game": gameID, "user": user}, &out); err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+	return out
 }
 
 // LeaveMatch (the overlay's "Salir de la partida online"): closes the game; the match ends on the server when it

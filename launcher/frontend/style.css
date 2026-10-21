@@ -280,3 +280,20 @@ body.pad .friend:focus { background: var(--row); }
 ::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-thumb { background: #3d4450; border-radius: 1px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* [stats] online statistics and the table */
+.top-act { display: flex; align-items: center; gap: 16px; }
+.dlg.stats { width: 520px; max-height: calc(100vh - 60px); }
+.dlg.stats small { color: var(--faint); line-height: 1.4; }
+.st-me { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.st-me .tile { background: rgba(0,0,0,.25); border-radius: 3px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.st-me .tile b { font-family: "Russo One"; font-weight: 400; font-size: 22px; color: #fff; }
+.st-me .tile span { font-size: 12px; color: var(--faint); }
+.st-me .tile.t-win b { color: var(--green); }
+.st-me .tile.t-loss b { color: #c96a6a; }
+.st-top { overflow-y: auto; max-height: 300px; min-height: 60px; background: rgba(0,0,0,.2); border-radius: 3px; }
+.st-top .r { cursor: pointer; }
+.st-top .r:hover { background: rgba(255,255,255,.04); }
+.st-top .r.mine .r-name { color: var(--green); }
+.st-top .rank { width: 34px; color: var(--faint); font-size: 13px; text-align: right; }
+.st-top .r:nth-child(-n+3) .rank { color: #e4c260; font-weight: 600; }

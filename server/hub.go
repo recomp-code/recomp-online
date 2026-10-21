@@ -133,6 +133,7 @@ type hub struct {
 	waiting   map[string]bool
 	dirty     map[string]bool // games whose lobby changed since the last flush
 	flushing  bool
+	stats     *statsStore // [stats] fights and time of the online matches (nil: not kept)
 }
 
 func newHub(st *store, rl *relay, relayAddr string) *hub {
@@ -441,6 +442,9 @@ func (h *hub) startMatchLocked(game, p1, p2, roomID string, s settings) *match {
 	delete(h.waiting, lc(p1))
 	delete(h.waiting, lc(p2))
 	h.rl.open(m.token, func(token, why string) { h.endMatch(m.ID, why) })
+	if h.stats != nil {
+		h.stats.matchStarted(m.ID, game, p1, p2)
+	}
 	for i, u := range []string{p1, p2} {
 		other := p2
 		if i == 1 {
@@ -491,6 +495,9 @@ func (h *hub) endMatch(id, why string) {
 	h.broadcastLocked(m.Game)
 	h.mu.Unlock()
 	h.rl.close(m.token, why)
+	if h.stats != nil {
+		h.stats.matchEnded(id, m.Game, m.P1, m.P2, m.Started)
+	}
 	log.Printf("match %s ended (%s)", id, why)
 }
 

@@ -204,6 +204,57 @@ func (a *api) routes() http.Handler {
 		a.hub.reportEnd(u, b.ID)
 		writeJSONResp(w, 200, map[string]bool{"ok": true})
 	}))
+	// [stats] each game reports every fight of an online match as it ends (stats.go: counted once both agree)
+	mux.HandleFunc("POST /api/match/fight", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			ID string
+			N  int
+			fightReport
+		}
+		if err := readBody(r, &b); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		if a.hub.stats == nil {
+			writeJSONResp(w, 200, map[string]bool{"ok": true})
+			return
+		}
+		if err := a.hub.stats.report(u, b.ID, b.N, b.fightReport); err != nil {
+			fail(w, 409, err)
+			return
+		}
+		writeJSONResp(w, 200, map[string]bool{"ok": true})
+	}))
+	// [stats] a game's table (the best 50) and one player's own line, by default the caller's
+	mux.HandleFunc("POST /api/stats", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		var b struct{ Game, User string }
+		if err := readBody(r, &b); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		if !gameRe.MatchString(b.Game) {
+			fail(w, 400, errors.New("juego no válido"))
+			return
+		}
+		who := u
+		if b.User != "" {
+			name, ok := a.st.exists(b.User)
+			if !ok {
+				fail(w, 404, errors.New("ese jugador no existe"))
+				return
+			}
+			who = name
+		}
+		if a.hub.stats == nil {
+			writeJSONResp(w, 200, map[string]any{"me": statsView{User: who}, "top": []statsView{}})
+			return
+		}
+		me, top := a.hub.stats.view(b.Game, who, 50)
+		if top == nil {
+			top = []statsView{}
+		}
+		writeJSONResp(w, 200, map[string]any{"me": me, "top": top})
+	}))
 	mux.HandleFunc("POST /api/friends", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
 		var b struct {
 			User string

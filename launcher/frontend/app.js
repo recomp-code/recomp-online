@@ -411,6 +411,48 @@ document.querySelectorAll("#r-max button").forEach((b) => b.addEventListener("cl
 }));
 $("btn-newroom").addEventListener("click", () => { $("r-err").textContent = ""; $("r-name").value = st.me ? "La sala de " + st.me : ""; $("m-room").classList.remove("hidden"); $("r-name").focus(); });
 $("btn-room-cancel").addEventListener("click", () => $("m-room").classList.add("hidden"));
+
+// ---------------- online statistics ----------------
+function playedTime(secs) {
+  if (secs < 3600) return Math.round(secs / 60) + " min";
+  const h = secs / 3600;
+  return (h < 10 ? h.toFixed(1).replace(".", ",") : Math.round(h)) + " h";
+}
+function winRate(w, l) { return w + l ? Math.round((100 * w) / (w + l)) + "%" : "–"; }
+async function openStats(user) {
+  const r = await api().Stats(user || "");
+  if (r.error) { fail(r.error); return; }
+  const me = r.me;
+  $("st-title").textContent = same(me.user, st.me) ? "Tus estadísticas" : "Estadísticas de " + me.user;
+  const box = $("st-me");
+  box.replaceChildren();
+  for (const [v, label, cls] of [[me.wins, "Ganadas", "t-win"], [me.losses, "Perdidas", "t-loss"], [winRate(me.wins, me.losses), "Victorias"],
+    [playedTime(me.seconds), "Jugado en línea"], [me.matches, "Partidas"], [me.rank ? "#" + me.rank : "–", "Puesto"]]) {
+    const t = el("div", "tile " + (cls || ""));
+    t.appendChild(el("b", null, String(v)));
+    t.appendChild(el("span", null, label));
+    box.appendChild(t);
+  }
+  const top = $("st-top");
+  top.replaceChildren();
+  if (!r.top.length) top.appendChild(el("div", "none", "Todavía nadie tiene peleas en línea. ¡Sé el primero!"));
+  for (const p of r.top) {
+    const row = el("div", "r" + (same(p.user, st.me) ? " mine" : ""));
+    row.appendChild(el("span", "rank", "#" + p.rank));
+    row.appendChild(pic(p.user));
+    const t = el("div", "r-txt");
+    t.appendChild(el("span", "r-name", p.user));
+    t.appendChild(el("span", "r-sub", p.wins + " ganadas · " + p.losses + " perdidas · " + winRate(p.wins, p.losses) + " · " + playedTime(p.seconds)));
+    row.appendChild(t);
+    row.tabIndex = 0;
+    row.addEventListener("click", () => openStats(p.user));
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") openStats(p.user); });
+    top.appendChild(row);
+  }
+  $("m-stats").classList.remove("hidden");
+}
+$("btn-stats").addEventListener("click", () => openStats(""));
+$("btn-stats-close").addEventListener("click", () => $("m-stats").classList.add("hidden"));
 $("btn-room-ok").addEventListener("click", async () => {
   const msg = await api().CreateRoom($("r-name").value, $("r-pass").value, roomMax);
   $("r-pass").value = "";

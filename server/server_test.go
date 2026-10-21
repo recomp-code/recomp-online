@@ -122,6 +122,9 @@ func testServer(t *testing.T) (string, string) {
 	}
 	relayAddr := rl.conn.LocalAddr().String()
 	h := newHub(st, rl, relayAddr)
+	if h.stats, err = openStats(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer((&api{st: st, hub: h, limiter: newLimiter(), conns: newConnLimit()}).routes())
 	t.Cleanup(func() { srv.CloseClientConnections(); srv.Close() }) // the event streams never end on their own
 	return srv.URL, relayAddr
@@ -491,5 +494,62 @@ func TestMatchCard(t *testing.T) {
 	}
 	if code, _ := do("POST", a.token, bytes.Repeat([]byte{0}, maxCard+1)); code != 413 && code != 409 {
 		t.Fatalf("oversized card: %d", code)
+	}
+}
+
+// [stats] a fight counts once both players reported the same result; the time comes with the match's end; the table
+// orders players by wins
+func TestStats(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Goku", "kamehameha", "dbzbt4", "1.4")
+	b := newTClient(t, base, "Vegeta", "finalflash", "dbzbt4", "1.4")
+	c := newTClient(t, base, "Krillin", "destructo", "dbzbt4", "1.4")
+	a.wait("hello")
+	b.wait("hello")
+	c.wait("hello")
+	_, inv := post(t, base, "/api/invite", a.token, map[string]any{"to": "vegeta", "settings": map[string]any{}})
+	if code, out := post(t, base, "/api/invite/respond", b.token, map[string]any{"id": inv["id"], "accept": true}); code != 200 {
+		t.Fatalf("accept: %d %v", code, out)
+	}
+	id := a.wait("match")["match"].(map[string]any)["id"].(string)
+	b.wait("match")
+	fight := func(tok string, n, winner, c1, c2 int) int {
+		code, _ := post(t, base, "/api/match/fight", tok, map[string]any{"id": id, "n": n, "winner": winner, "c1": c1, "c2": c2})
+		return code
+	}
+	// fight 1: both say Vegeta (player 2) won -> counts; fight 2: they disagree -> counts for nobody;
+	// fight 3: both say Goku won -> counts; fight 4: winner unknown (ring out) -> not counted
+	for _, f := range [][5]int{{1, 2, 221, 31}, {2, 1, 221, 31}, {3, 1, 221, 31}, {4, 0, 221, 31}} {
+		if code := fight(a.token, f[0], f[1], f[2], f[3]); code != 200 {
+			t.Fatalf("report: %d", code)
+		}
+	}
+	for _, f := range [][5]int{{1, 2, 221, 31}, {2, 2, 221, 31}, {3, 1, 221, 31}, {4, 0, 221, 31}} {
+		fight(b.token, f[0], f[1], f[2], f[3])
+	}
+	fight(b.token, 1, 2, 221, 31) // a resend changes nothing
+	if code := fight(c.token, 5, 1, 1, 1); code != 409 {
+		t.Fatalf("a player outside the match reported a fight: %d", code)
+	}
+	post(t, base, "/api/match/end", a.token, map[string]string{"id": id})
+	a.wait("match_end")
+	_, out := post(t, base, "/api/stats", c.token, map[string]any{"game": "dbzbt4", "user": "goku"})
+	me := out["me"].(map[string]any)
+	if me["user"] != "Goku" || me["wins"].(float64) != 1 || me["losses"].(float64) != 1 || me["matches"].(float64) != 1 {
+		t.Fatalf("goku: %v", me)
+	}
+	if ch := me["chars"].(map[string]any); ch["221"].(float64) != 2 {
+		t.Fatalf("goku's characters: %v", ch)
+	}
+	_, out = post(t, base, "/api/stats", c.token, map[string]any{"game": "dbzbt4"})
+	if me := out["me"].(map[string]any); me["user"] != "Krillin" || me["rank"].(float64) != 0 || me["wins"].(float64) != 0 {
+		t.Fatalf("krillin (no fights): %v", me)
+	}
+	top := out["top"].([]any)
+	if len(top) != 2 || top[0].(map[string]any)["user"] != "Goku" || top[0].(map[string]any)["rank"].(float64) != 1 {
+		t.Fatalf("table: %v", top)
+	}
+	if code, _ := post(t, base, "/api/stats", c.token, map[string]any{"game": "dbzbt4", "user": "nadie"}); code != 404 {
+		t.Fatalf("unknown player: %d", code)
 	}
 }

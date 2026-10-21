@@ -60,6 +60,27 @@ func (a *App) startup(ctx context.Context) {
 			}
 		}()
 	}
+	if u := strings.TrimSpace(os.Getenv("RECOMP_TEST_INVITE")); u != "" {
+		go a.testInvite(u)
+	}
+}
+
+// [test] RECOMP_TEST_INVITE=<user>: invite that player every 10 s until a match starts, once per launch;
+// RECOMP_TEST_ACCEPT=1: accept every invitation (onNetEvent). For unattended online tests between two machines
+// with test accounts -- together with the game's PS2X_AUTOSTART, nobody has to touch either one.
+func (a *App) testInvite(user string) {
+	for {
+		time.Sleep(10 * time.Second)
+		a.mu.Lock()
+		inMatch := a.match != nil
+		a.mu.Unlock()
+		if inMatch || a.game.running() {
+			return
+		}
+		if msg := a.Invite(user); msg != "" {
+			wruntime.LogInfo(a.ctx, "test invite: "+msg)
+		}
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -257,6 +278,14 @@ func (a *App) HideOverlay() {
 func (a *App) onNetEvent(ev map[string]any) {
 	switch ev["type"] {
 	case "invite":
+		if os.Getenv("RECOMP_TEST_ACCEPT") == "1" { // [test] see testInvite
+			if inv, ok := ev["invite"].(map[string]any); ok {
+				if id, _ := inv["id"].(string); id != "" {
+					go a.Respond(id, true)
+				}
+			}
+			break
+		}
 		if a.game.running() { // the player is in a game: show the notice over it
 			a.showOverlay()
 		}

@@ -9,7 +9,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -203,5 +202,5 @@ var br4Profile = &profile{
 	},
 }
 
-// gamesRoot: where the launcher installs games.
-func gamesRoot(launcherRoot string) string { return filepath.Join(launcherRoot, "games") }
+// gamesRoot: where the launcher installs games (game_windows.go: next to Recomp.exe; game_darwin.go: Application
+// Support, since the app itself is read-only).

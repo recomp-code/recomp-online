@@ -99,6 +99,7 @@ func fakeGitHub(t *testing.T, version string, pack []byte) *httptest.Server {
 func TestInstallAndUpdateKeepsPlayerFiles(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("RECOMP_NO_UPDATE", "1")
+	t.Setenv("RECOMP_LAUNCHER_DATA", root) // macOS: the launcher's files and the games (gamesRoot) go here, not to Application Support
 	runner := filepath.Base(newGame(root, root, br4Profile).runner)
 	pack1 := zipOf(t, map[string]string{"runtime/" + runner: "v1", "gshost/presets/br4.ini": "preset"})
 	ts := fakeGitHub(t, "1.0", pack1)
@@ -154,6 +155,7 @@ func TestInstallAndUpdateKeepsPlayerFiles(t *testing.T) {
 func TestInstallRefusesABadPack(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("RECOMP_NO_UPDATE", "1")
+	t.Setenv("RECOMP_LAUNCHER_DATA", root) // macOS: the launcher's files and the games (gamesRoot) go here, not to Application Support
 	ts := fakeGitHub(t, "1.0", zipOf(t, map[string]string{"runtime/x": "v1"}))
 	defer ts.Close()
 	a := NewApp(root, false)

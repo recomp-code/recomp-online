@@ -36,23 +36,32 @@ func launcherHome(launcherRoot string) string {
 	return filepath.Join(h, "Library", "Application Support", "DBZ_BT4")
 }
 
-// gameDir: DBZ BT4 is inside the app (Resources, Helpers); another game is a downloaded pack in
-// Application Support/Recomp/games/<id> (TODO(mac): the pack's layout for macOS).
+// gamesRoot: where downloaded games go. Not inside the app: a downloaded .app runs from a read-only, translocated
+// copy, and an app update replaces the whole bundle. RECOMP_LAUNCHER_DATA (tests) moves it with the launcher's files.
+func gamesRoot(launcherRoot string) string {
+	if d := os.Getenv("RECOMP_LAUNCHER_DATA"); d != "" {
+		return filepath.Join(d, "games")
+	}
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, "Library", "Application Support", "Recomp", "games")
+}
+
+// gameDir: DBZ BT4 is inside the app (Resources, Helpers); another game is a downloaded pack in gamesRoot/<id>, laid
+// out like the Windows pack (runtime/ with ps2EntryRunner, gshost/ with the presets; see setPaths).
 func gameDir(launcherRoot string, p *profile) string {
 	if p.ID == dbzProfile.ID {
 		return launcherRoot
 	}
-	h, _ := os.UserHomeDir()
-	return filepath.Join(h, "Library", "Application Support", "Recomp", "games", p.ID)
+	return filepath.Join(gamesRoot(launcherRoot), p.ID)
 }
 
 func (g *game) setPaths() {
 	if g.p.ID != dbzProfile.ID {
+		// a downloaded game: its folder exists once it is installed (installer.go), as on Windows
 		g.home, g.res = g.dir, g.dir
-		_ = os.MkdirAll(g.home, 0o755)
 		g.runtimeDir, g.gshostDir = filepath.Join(g.dir, "runtime"), filepath.Join(g.dir, "gshost")
 		g.cfgPath, g.logs = filepath.Join(g.dir, "settings.cfg"), filepath.Join(g.dir, "logs")
-		g.runner = filepath.Join(g.runtimeDir, "ps2EntryRunner")
+		g.runner, g.sites = filepath.Join(g.runtimeDir, "ps2EntryRunner"), filepath.Join(g.runtimeDir, "fps60_sites.txt")
 		return
 	}
 	contents := filepath.Dir(g.root) // Contents/MacOS -> Contents

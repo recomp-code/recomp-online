@@ -29,6 +29,9 @@ func (g *game) setPaths() {
 	g.runner, g.sites = filepath.Join(g.runtimeDir, "ps2EntryRunner.exe"), filepath.Join(g.runtimeDir, "fps60_sites.txt")
 }
 
+// gamesRoot: the games go next to the launcher (the zip's folder is the player's).
+func gamesRoot(launcherRoot string) string { return filepath.Join(launcherRoot, "games") }
+
 // gameDir: where a game lives: games\<id>. An old DBZ BT4 zip has runtime\ next to the launcher: it is played from
 // there until the first update installs games\dbzbt4 (which keeps its settings, saves and ISO files).
 func gameDir(launcherRoot string, p *profile) string {

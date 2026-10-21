@@ -34,6 +34,7 @@ type online struct {
 	path    string
 	cfg     onlineCfg
 	token   string // decrypted, in memory only
+	game    string // the game the player is in (the lobby, rooms and stats are per game)
 	build   string
 	http    *http.Client
 	cancel  context.CancelFunc
@@ -89,8 +90,8 @@ func (o *online) remember(ev map[string]any) {
 	}
 }
 
-func newOnline(root, build string, emit func(string, any)) *online {
-	o := &online{path: filepath.Join(root, "online.json"), build: build,
+func newOnline(root, game, build string, emit func(string, any)) *online {
+	o := &online{path: filepath.Join(root, "online.json"), game: game, build: build,
 		http: &http.Client{Timeout: 15 * time.Second}}
 	o.emit = func(name string, data any) {
 		if ev, ok := data.(map[string]any); ok && name == "online" {
@@ -281,7 +282,7 @@ func (o *online) connect() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	o.cancel = cancel
-	server, tok, build := o.cfg.Server, o.token, o.build
+	server, tok, game, build := o.cfg.Server, o.token, o.game, o.build
 	o.mu.Unlock()
 	if tok == "" {
 		return
@@ -292,7 +293,7 @@ func (o *online) connect() {
 		pause := time.Duration(0)
 		for ctx.Err() == nil {
 			t0 := time.Now()
-			err := o.stream(ctx, server, tok, build)
+			err := o.stream(ctx, server, tok, game, build)
 			if ctx.Err() != nil {
 				return
 			}
@@ -320,8 +321,8 @@ func (o *online) connect() {
 	}()
 }
 
-func (o *online) stream(ctx context.Context, server, tok, build string) error {
-	u := "ws" + strings.TrimPrefix(server, "http") + "/api/ws?game=" + gameID + "&build=" + url.QueryEscape(build)
+func (o *online) stream(ctx context.Context, server, tok, game, build string) error {
+	u := "ws" + strings.TrimPrefix(server, "http") + "/api/ws?game=" + url.QueryEscape(game) + "&build=" + url.QueryEscape(build)
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	c, resp, err := websocket.Dial(dctx, u, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": {"Bearer " + tok}}})
 	cancel()
@@ -351,5 +352,21 @@ func (o *online) stream(ctx context.Context, server, tok, build string) error {
 			o.onEvent(ev)
 		}
 		o.emit("online", ev)
+	}
+}
+
+// setGame: the player switched games in the launcher: the live channel reconnects as that game (its lobby, rooms and
+// build). Nothing to do when it is the same.
+func (o *online) setGame(game, build string) {
+	o.mu.Lock()
+	same := o.game == game && o.build == build
+	o.game, o.build = game, build
+	if !same {
+		o.lastLobby, o.lastRoom = nil, nil
+	}
+	tok := o.token
+	o.mu.Unlock()
+	if !same && tok != "" {
+		o.connect()
 	}
 }

@@ -107,18 +107,68 @@ function note(title, text, kind, actions, seconds, who) {
 }
 const fail = (msg) => { if (msg) note("Algo falló", msg, "bad"); return !msg; };
 
+// ---------------- the games (sidebar) ----------------
+function renderGames() {
+  const s = st.state, box = $("games");
+  box.textContent = "";
+  for (const g of s.games || []) {
+    const r = el("div", "game-row" + (g.selected ? " on" : "") + (g.supported ? "" : " off"));
+    r.appendChild(el("span", "g-icon " + g.banner));
+    r.appendChild(el("span", null, g.short));
+    if (!g.supported) r.appendChild(el("em", null, "pronto"));
+    else if (!g.installed) r.appendChild(el("em", null, "instalar"));
+    if (g.supported && !g.selected) {
+      r.tabIndex = 0;
+      r.classList.add("pick");
+      const pick = async () => { if (fail(await api().SelectGame(g.id))) { refresh(); } };
+      r.addEventListener("click", pick);
+      r.addEventListener("keydown", (e) => { if (e.key === "Enter") pick(); });
+    }
+    box.appendChild(r);
+  }
+}
+
 // ---------------- library page ----------------
-// the quality presets and a few texts differ per system (State: platform, qualities, fullscreenKey)
-function renderPlatform(s) {
+// the quality presets, the game's own switches and a few texts differ per game and system
+function renderGame(s) {
+  const key = s.game + "/" + s.platform;
   const sel = $("s-quality");
-  if (s.qualities && sel.dataset.platform !== s.platform) {
-    sel.dataset.platform = s.platform;
+  if (s.qualities && sel.dataset.key !== key) {
+    sel.dataset.key = key;
     sel.textContent = "";
     s.qualities.forEach((q, i) => { const o = el("option", null, q.name); o.value = String(i); sel.appendChild(o); });
   }
-  $("banner-sub").textContent = "Dragon Ball Z (Beta 14 Rev2) para " + s.platform;
+  const banner = $("banner");
+  if (banner.dataset.game !== s.game) {
+    banner.dataset.game = s.game;
+    banner.className = "banner " + s.banner;
+    $("banner-title").textContent = s.title;
+    $("banner-title").className = s.banner === "dbz" ? "logo-in-art" : "";
+    // the game's own switches, before "Pantalla completa"
+    document.querySelectorAll(".opt.game-opt").forEach((o) => o.remove());
+    for (const o of s.options || []) {
+      const row = el("div", "opt game-opt");
+      const lab = el("label", null, o.label);
+      lab.htmlFor = "go-" + o.key;
+      const ctl = el("div", "ctl");
+      const cb = el("input", "sw");
+      cb.type = "checkbox";
+      cb.id = "go-" + o.key;
+      cb.dataset.key = o.key;
+      cb.addEventListener("change", saveSettings);
+      ctl.appendChild(cb);
+      ctl.appendChild(el("small", null, o.hint));
+      row.appendChild(lab);
+      row.appendChild(ctl);
+      $("opt-full").before(row);
+    }
+    $("controls").innerHTML = s.controls; // the launcher's own text (profiles.go), never anything from the network
+    $("p-game").textContent = s.short;
+  }
+  $("banner-sub").textContent = s.sub + " para " + s.platform;
   $("full-hint").textContent = s.fullscreenKey + " cambia durante la partida.";
   const mac = s.platform === "macOS";
+  $("dlss-card").classList.toggle("hidden", !mac && !s.hasDLSS);
   if (mac) {
     $("dlss-label").textContent = "Partidas y registros";
     $("dlss-hint").textContent = s.dataFolder;
@@ -129,16 +179,23 @@ function renderPlatform(s) {
 function renderPlay() {
   const s = st.state;
   $("ver").textContent = "Launcher " + s.version;
+  const installing = st.installing === s.game;
+  $("btn-play").classList.toggle("hidden", !s.installed);
+  $("btn-install").classList.toggle("hidden", s.installed);
+  $("btn-install").disabled = installing;
+  $("btn-install").textContent = installing ? "Instalando…" : "Instalar";
   $("btn-play").disabled = !s.ready || s.playing;
   $("btn-play").textContent = s.playing ? "Jugando" : "Jugar";
-  $("iso-line").textContent = s.ready ? s.iso : s.iso ? "No encuentro la ISO que elegiste." : "Necesitas tu ISO del mod (SLUS-219.78, Beta 14 Rev2).";
+  $("iso-line").textContent = !s.installed ? (installing ? st.installText : "Se descarga ya compilado, listo para jugar con tu ISO.")
+    : s.ready ? s.iso : s.iso ? "No encuentro la ISO que elegiste." : s.isoMissing;
+  $("btn-iso").classList.toggle("hidden", !s.installed);
   $("btn-iso").textContent = s.ready ? "Cambiar ISO" : "Seleccionar ISO";
-  const mac = renderPlatform(s);
+  renderGames();
+  const mac = renderGame(s);
   $("s-quality").value = String(s.settings.quality);
   $("q-hint").textContent = (s.qualities && s.qualities[s.settings.quality] || {}).hint || "";
-  $("s-fps60").checked = s.settings.fps60;
+  document.querySelectorAll(".opt.game-opt input").forEach((cb) => { cb.checked = !!(s.settings.opts || {})[cb.dataset.key]; });
   $("s-full").checked = s.settings.fullscreen;
-  $("s-unlock").checked = s.settings.unlock;
   $("s-delay").value = String(s.settings.netDelay);
   const d = s.dlss;
   $("dlss-line").textContent = mac ? "Memoria, ajustes y logs/juego.log." : "Versión " + d.version + (d.own ? " (la tuya)" : "") + (d.dlss5 ? " · DLSS 5 disponible" : "");
@@ -159,13 +216,68 @@ async function refresh() {
 async function saveSettings() {
   const s = st.state.settings;
   s.quality = parseInt($("s-quality").value, 10);
-  s.fps60 = $("s-fps60").checked;
   s.fullscreen = $("s-full").checked;
-  s.unlock = $("s-unlock").checked;
+  s.opts = {};
+  document.querySelectorAll(".opt.game-opt input").forEach((cb) => { s.opts[cb.dataset.key] = cb.checked; });
   s.netDelay = parseInt($("s-delay").value, 10);
   if (fail(await api().SaveSettings(s))) refresh();
 }
-["s-quality", "s-fps60", "s-unlock", "s-full", "s-delay"].forEach((id) => $(id).addEventListener("change", saveSettings));
+["s-quality", "s-full", "s-delay"].forEach((id) => $(id).addEventListener("change", saveSettings));
+
+// ---------------- adding and updating games ----------------
+async function openAdd() {
+  $("add-err").textContent = "";
+  const cat = $("cat");
+  cat.textContent = "";
+  for (const c of (await api().Catalog()) || []) {
+    const r = el("div", "r");
+    const t = el("div", "r-txt");
+    t.appendChild(el("span", "r-name", c.title));
+    t.appendChild(el("span", "r-sub", !c.supported ? "Todavía no para este sistema" : c.installed ? "Instalado" + (c.version ? " · versión " + c.version : "") : c.repo));
+    r.appendChild(t);
+    if (c.supported) {
+      const act = el("div", "act keep");
+      act.appendChild(button("btn" + (c.installed ? "" : " green"), c.installed ? "Buscar actualización" : "Instalar", () => addGame(c.id)));
+      r.appendChild(act);
+    }
+    cat.appendChild(r);
+  }
+  $("m-add").classList.remove("hidden");
+}
+async function addGame(idOrRepo) {
+  const e = await api().AddGame(idOrRepo);
+  if (e) { $("add-err").textContent = e; return; }
+  $("m-add").classList.add("hidden");
+}
+$("btn-add-game").addEventListener("click", openAdd);
+$("btn-add-close").addEventListener("click", () => $("m-add").classList.add("hidden"));
+$("btn-add-url").addEventListener("click", () => addGame($("add-url").value));
+$("add-url").addEventListener("keydown", (e) => { if (e.key === "Enter") addGame($("add-url").value); });
+$("btn-install").addEventListener("click", () => { if (st.state) addGame(st.state.game); });
+const mb = (n) => (n / 1048576).toFixed(0) + " MB";
+function onInstall(ev) {
+  const title = ((st.state && st.state.games) || []).find((g) => g.id === ev.game);
+  const name = title ? title.short : ev.game;
+  switch (ev.phase) {
+    case "download":
+      st.installing = ev.game;
+      st.installText = "Descargando " + name + ": " + mb(ev.done) + (ev.total > 0 ? " de " + mb(ev.total) : "");
+      break;
+    case "unpack":
+      st.installText = "Instalando " + name + "…";
+      break;
+    case "done":
+      st.installing = null;
+      note(name + " está listo", "Versión " + ev.version + ". Elige tu ISO y a jugar.", "good", null, 8);
+      break;
+    case "error":
+      st.installing = null;
+      note("No se pudo instalar " + name, ev.error, "bad", null, 12);
+      break;
+  }
+  if (st.state) renderPlay();
+  if (ev.phase === "done" || ev.phase === "error") refresh();
+}
 $("btn-iso").addEventListener("click", async () => { const e = await api().ChooseISO(); if (e) fail(e); refresh(); });
 $("btn-play").addEventListener("click", async () => { fail(await api().Play()); refresh(); });
 $("btn-dlss").addEventListener("click", () => api().OpenDLSSFolder());
@@ -242,15 +354,15 @@ $("find").addEventListener("input", (e) => {
 });
 $("find").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.target.value = ""; e.target.dispatchEvent(new Event("input")); } });
 const matches = (name) => !search.q || name.toLowerCase().includes(search.q.toLowerCase());
-const gameNames = { dbzbt4: "DBZ BT4", br4: "Bloody Roar 4" };
+const gameName = (id) => { const g = ((st.state && st.state.games) || []).find((x) => x.id === id); return g ? g.short : id; };
 
 function searchRow(u) {
   const r = el("div", "r");
-  const here = u.game === "dbzbt4";
+  const here = st.state && u.game === st.state.game;
   r.appendChild(pic(u.user, u.status));
   const t = el("div", "r-txt");
   t.appendChild(el("span", "r-name", u.user));
-  const where = !u.status ? "Desconectado" : here ? statusWords[u.status] : "Jugando " + (gameNames[u.game] || u.game);
+  const where = !u.status ? "Desconectado" : here ? statusWords[u.status] : "Jugando " + gameName(u.game);
   t.appendChild(el("span", "r-sub " + (u.status ? u.status : "off"), where));
   r.appendChild(t);
   const act = el("div", "act keep");
@@ -565,6 +677,16 @@ function boot() {
     $("btn-leave-match").classList.add("hidden");
     note("La partida online terminó", "El juego sigue abierto, sin conexión.", "", null, 8);
     refresh();
+  });
+  rt().EventsOn("install", onInstall);
+  // a newer version of a game was published: one click updates it (it keeps settings, saves and the ISO's files)
+  rt().EventsOn("update", (u) => note("Hay una versión nueva de " + gameName(u.game), "Versión " + u.version + (u.current ? " (tienes la " + u.current + ")" : "") + ".", "",
+    [{ label: "Actualizar", cls: "blue", fn: () => api().AddGame(u.game) }], 20));
+  // the launcher updated itself: the new version starts with the next launch, or now
+  rt().EventsOn("launcher_update", (u) => {
+    if (u.phase === "ready") note("Recomp " + u.version + " está lista", "Se usará la próxima vez que abras Recomp.", "good",
+      [{ label: "Reiniciar ahora", cls: "blue", fn: async () => fail(await api().RestartForUpdate()) }], 30);
+    else if (u.phase === "manual") note("Hay una versión nueva de Recomp", "Versión " + u.version + ": descárgala desde GitHub.", "", null, 20);
   });
   rt().EventsOn("overlay", (on) => { $("overlay-banner").classList.toggle("hidden", !on); if (on) show("online"); });
   rt().EventsOn("match_countdown", (m) => {

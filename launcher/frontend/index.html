@@ -36,8 +36,8 @@
 <div class="app">
   <aside class="side">
     <div class="side-h">Juegos</div>
-    <div class="game-row on"><span class="g-icon dbz"></span><span>DBZ Budokai Tenkaichi 4</span></div>
-    <div class="game-row off" title="Su versión en línea llega pronto"><span class="g-icon br"></span><span>Bloody Roar 4</span><em>pronto</em></div>
+    <div id="games"></div>
+    <button class="txtbtn add-game" id="btn-add-game" type="button">+ Agregar juego</button>
     <div class="side-h friends-h"><span>Amigos</span><span id="f-count"></span></div>
     <div class="friends" id="friends"></div>
     <div class="side-foot">
@@ -49,15 +49,16 @@
   <main>
     <!-- BIBLIOTECA -->
     <section class="view" id="v-play">
-      <div class="banner dbz">
+      <div class="banner dbz" id="banner">
         <div class="banner-lines"></div>
         <div class="banner-txt">
-          <h1 class="logo-in-art">Budokai Tenkaichi 4</h1>
+          <h1 class="logo-in-art" id="banner-title">Budokai Tenkaichi 4</h1>
           <p id="banner-sub">Dragon Ball Z (Beta 14 Rev2)</p>
         </div>
       </div>
       <div class="playline">
         <button class="play" id="btn-play" type="button">Jugar</button>
+        <button class="play hidden" id="btn-install" type="button">Instalar</button>
         <div class="iso">
           <span id="iso-line"></span>
           <button class="txtbtn" id="btn-iso" type="button">Seleccionar ISO</button>
@@ -68,22 +69,9 @@
       <div class="opts">
         <div class="opt">
           <label for="s-quality">Calidad</label>
-          <div class="ctl"><select id="s-quality">
-            <option value="0">Máxima (6x)</option>
-            <option value="1">Equilibrada (3x)</option>
-            <option value="2">DLSS / FSR (2x reescalado)</option>
-            <option value="3">DLSS 5 (experimental)</option>
-          </select><small id="q-hint"></small></div>
+          <div class="ctl"><select id="s-quality"></select><small id="q-hint"></small></div>
         </div>
-        <div class="opt">
-          <label for="s-fps60">Peleas a 60 fps</label>
-          <div class="ctl"><input type="checkbox" class="sw" id="s-fps60"><small>En PS2 iban a 30. También se cambia dentro del juego.</small></div>
-        </div>
-        <div class="opt">
-          <label for="s-unlock">Contenido desbloqueado</label>
-          <div class="ctl"><input type="checkbox" class="sw" id="s-unlock"><small>Todos los personajes, escenarios y modos desde el principio, como el truco del menú. Cuando el juego guarda, se queda en tu memoria. En línea siempre está activado.</small></div>
-        </div>
-        <div class="opt">
+        <div class="opt" id="opt-full">
           <label for="s-full">Pantalla completa</label>
           <div class="ctl"><input type="checkbox" class="sw" id="s-full"><small id="full-hint">Alt+Enter cambia durante la partida.</small></div>
         </div>
@@ -95,9 +83,7 @@
       </div>
 
       <h3 class="sect">Controles</h3>
-      <p class="plain">Mando de Xbox: A cruz, B círculo, X cuadrado, Y triángulo. Mantén START (o pulsa F1) para el menú de
-        opciones del juego. Durante la partida, <b>Back + Start</b> (o Shift+Tab) abre esta ventana encima, para ver quién
-        está en línea o invitar; aquí se maneja con la cruceta, A para aceptar y B para volver.</p>
+      <p class="plain" id="controls"></p>
     </section>
 
     <!-- EN LÍNEA -->
@@ -125,7 +111,7 @@
         </div>
         <div class="split">
           <div class="box">
-            <div class="box-h">Jugando DBZ BT4 ahora <span class="n" id="p-count"></span></div>
+            <div class="box-h">Jugando <span id="p-game">DBZ BT4</span> ahora <span class="n" id="p-count"></span></div>
             <div class="find"><input id="find" maxlength="16" placeholder="Buscar jugador por nombre" spellcheck="false" autocomplete="off"></div>
             <div class="rows" id="players"></div>
           </div>
@@ -209,6 +195,18 @@
     <div class="st-top" id="st-top"></div>
     <small>Solo cuentan las peleas en línea en las que los juegos de los dos dieron el mismo resultado. Toca a un jugador para ver sus números.</small>
     <div class="btnrow"><button class="btn" id="btn-stats-close" type="button">Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="m-add">
+  <div class="dlg add">
+    <h3>Agregar juego</h3>
+    <div class="cat" id="cat"></div>
+    <div class="sub-h">O pega la dirección de su repositorio</div>
+    <input id="add-url" maxlength="200" placeholder="https://github.com/recomp-code/..." spellcheck="false" autocomplete="off">
+    <div class="err" id="add-err"></div>
+    <small>Se descarga ya compilado, listo para jugar. Tu ISO sigue siendo tuya: el juego nunca se descarga.</small>
+    <div class="btnrow"><button class="btn blue" id="btn-add-url" type="button">Agregar</button><button class="btn" id="btn-add-close" type="button">Cerrar</button></div>
   </div>
 </div>
 

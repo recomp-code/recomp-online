@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -11,7 +13,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const launcherVersion = "2.2"
+const launcherVersion = "3.0"
 
 // defaultServer is set at build time: -ldflags "-X main.defaultServer=https://online.tudominio.com"
 var defaultServer = "https://online.example.com"
@@ -19,7 +21,8 @@ var defaultServer = "https://online.example.com"
 type App struct {
 	ctx      context.Context
 	root     string
-	game     *game
+	game     *game            // the game selected in the launcher (the one Jugar starts and the lobby is for)
+	games    map[string]*game // every game the launcher knows, installed or not
 	net      *online
 	hk       hotkey
 	pad      padWatch
@@ -31,9 +34,12 @@ type App struct {
 }
 
 func NewApp(root string, direct bool) *App {
-	a := &App{root: root, direct: direct}
-	a.game = newGame(root)
-	a.net = newOnline(a.game.home, a.game.build(), a.emit) // home: where the launcher writes (game_*.go)
+	a := &App{root: root, direct: direct, games: map[string]*game{}}
+	for _, p := range profiles {
+		a.games[p.ID] = newGame(root, gameDir(root, p), p)
+	}
+	a.game = a.games[a.lastGame()]
+	a.net = newOnline(launcherHome(root), a.game.p.ID, a.game.build(), a.emit)
 	a.net.onEvent = a.onNetEvent
 	return a
 }
@@ -50,9 +56,19 @@ func (a *App) startup(ctx context.Context) {
 		n, skipped := a.game.addDLSS(paths)
 		a.emit("dlss", map[string]any{"added": n, "skipped": skipped, "info": a.game.dlssInfo()})
 	})
+	// [test] RECOMP_TEST_LOGIN=<user>:<password>: sign in at start when not signed in (unattended online tests,
+	// with RECOMP_TEST_INVITE / RECOMP_TEST_ACCEPT, against a test server)
+	if v := os.Getenv("RECOMP_TEST_LOGIN"); v != "" {
+		if _, ok := a.net.loggedIn(); !ok {
+			if u, pw, ok := strings.Cut(v, ":"); ok {
+				_ = a.net.login(u, pw, false)
+			}
+		}
+	}
 	if _, ok := a.net.loggedIn(); ok {
 		a.net.connect()
 	}
+	go a.updateLoop() // [update] the launcher and the installed games (updater.go, installer.go)
 	if a.direct && a.game.ready() {
 		go func() {
 			time.Sleep(300 * time.Millisecond)
@@ -88,21 +104,95 @@ func (a *App) shutdown(ctx context.Context) {
 	a.hk.stop()
 }
 
+// ---- the games ----
+
+// prefsPath: the launcher's own choices (the selected game).
+func (a *App) prefsPath() string { return filepath.Join(launcherHome(a.root), "recomp.json") }
+
+// lastGame: the game selected last time; else the first one installed; else the first one.
+func (a *App) lastGame() string {
+	var prefs struct {
+		Game string `json:"game"`
+	}
+	if readJSONFile(a.prefsPath(), &prefs) == nil {
+		if g := a.games[prefs.Game]; g != nil && g.p.supported() {
+			return prefs.Game
+		}
+	}
+	for _, p := range profiles {
+		if a.games[p.ID].installed() && p.supported() {
+			return p.ID
+		}
+	}
+	return profiles[0].ID
+}
+
+// GameEntry: one game of the sidebar.
+type GameEntry struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Short     string `json:"short"`
+	Banner    string `json:"banner"`
+	Installed bool   `json:"installed"`
+	Supported bool   `json:"supported"` // the game exists for this system
+	Selected  bool   `json:"selected"`
+}
+
+func (a *App) gameEntries() []GameEntry {
+	var out []GameEntry
+	for _, p := range profiles {
+		g := a.games[p.ID]
+		out = append(out, GameEntry{ID: p.ID, Title: p.Title, Short: p.Short, Banner: p.Banner, Installed: g.installed(),
+			Supported: p.supported(), Selected: g == a.game})
+	}
+	return out
+}
+
+// SelectGame: the player picks a game in the sidebar (not while one is open or a match is on).
+func (a *App) SelectGame(id string) string {
+	g := a.games[id]
+	if g == nil || !g.p.supported() {
+		return "ese juego no está disponible para " + platformName
+	}
+	a.mu.Lock()
+	busy := a.match != nil
+	a.mu.Unlock()
+	if busy || a.game.running() {
+		return "cierra el juego abierto antes de cambiar"
+	}
+	a.game = g
+	b, _ := json.Marshal(map[string]string{"game": id})
+	_ = os.WriteFile(a.prefsPath(), b, 0o644)
+	a.net.setGame(g.p.ID, g.build())
+	return ""
+}
+
 // ---- state and settings ----
 
 type State struct {
-	Title    string   `json:"title"`
-	Version  string   `json:"version"`
-	Build    string   `json:"build"`
-	Ready    bool     `json:"ready"`
-	ISO      string   `json:"iso"`
-	Settings Settings `json:"settings"`
-	DLSS     DLSSInfo `json:"dlss"`
-	GPU      string   `json:"gpu"`
-	Server   string   `json:"server"`
-	User     string   `json:"user"`
-	LoggedIn bool     `json:"loggedIn"`
-	Playing  bool     `json:"playing"`
+	Games      []GameEntry  `json:"games"`
+	Game       string       `json:"game"`
+	Short      string       `json:"short"`
+	Banner     string       `json:"banner"`
+	Sub        string       `json:"sub"`
+	Serial     string       `json:"serial"`
+	Installed  bool         `json:"installed"`
+	ISOMissing string       `json:"isoMissing"`
+	Controls   string       `json:"controls"`
+	Options    []GameOption `json:"options"`
+	HasDLSS    bool         `json:"hasDLSS"`
+	Title      string       `json:"title"`
+	Version    string       `json:"version"`
+	Build      string       `json:"build"`
+	Ready      bool         `json:"ready"`
+	ISO        string       `json:"iso"`
+	Settings   Settings     `json:"settings"`
+	DLSS       DLSSInfo     `json:"dlss"`
+	GPU        string       `json:"gpu"`
+	Server     string       `json:"server"`
+	User       string       `json:"user"`
+	LoggedIn   bool         `json:"loggedIn"`
+	Playing    bool         `json:"playing"`
 	// what differs per system, for the interface
 	Platform      string          `json:"platform"`
 	Qualities     []QualityOption `json:"qualities"`
@@ -116,9 +206,12 @@ func (a *App) State() State {
 	a.net.mu.Lock()
 	server := a.net.cfg.Server
 	a.net.mu.Unlock()
-	return State{Title: gameTitle, Version: launcherVersion, Build: a.net.build, Ready: a.game.ready(), ISO: s.ISO, Settings: s,
+	p := a.game.p
+	return State{Games: a.gameEntries(), Game: p.ID, Short: p.Short, Banner: p.Banner, Sub: p.Sub, Serial: p.Serial,
+		Installed: a.game.installed(), ISOMissing: p.ISOMissing, Controls: p.Controls, Options: p.Options, HasDLSS: p.DLSSFolder,
+		Title: p.Title, Version: launcherVersion, Build: a.game.build(), Ready: a.game.ready(), ISO: s.ISO, Settings: s,
 		DLSS: a.game.dlssInfo(), GPU: gpuNames(), Server: server, User: u, LoggedIn: ok, Playing: a.game.running(),
-		Platform: platformName, Qualities: qualityOptions, FullscreenKey: fullscreenKey, DataFolder: a.game.dataFolder()}
+		Platform: platformName, Qualities: a.game.qualityOptions(), FullscreenKey: fullscreenKey, DataFolder: a.game.dataFolder()}
 }
 
 func (a *App) SaveSettings(s Settings) string { return errText(a.game.setSettings(s)) }
@@ -131,7 +224,7 @@ func errText(err error) string {
 }
 
 func (a *App) ChooseISO() string {
-	p, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: "Elige la ISO de DBZ Budokai Tenkaichi 4 (Beta 14 Rev2)",
+	p, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: a.game.p.ISOTitle,
 		Filters: []wruntime.FileFilter{{DisplayName: "Imagen de disco PS2 (*.iso)", Pattern: "*.iso"}}})
 	if err != nil || p == "" {
 		return ""
@@ -148,7 +241,7 @@ func (a *App) OpenDLSSFolder() {
 
 // OpenLink: only the pages the launcher links to.
 func (a *App) OpenLink(which string) {
-	links := map[string]string{"github": "https://github.com/recomp-code/dbz-bt4-recomp"}
+	links := map[string]string{"github": "https://github.com/" + a.game.p.Repo}
 	if u, ok := links[which]; ok {
 		wruntime.BrowserOpenURL(a.ctx, u)
 	}
@@ -285,7 +378,7 @@ func (a *App) sendFights(m *netMatch, sent *int) {
 // Stats: the online table of this game (the best 50) and one player's own line (user "" = the player).
 func (a *App) Stats(user string) map[string]any {
 	var out map[string]any
-	if err := a.net.call("/api/stats", map[string]string{"game": gameID, "user": user}, &out); err != nil {
+	if err := a.net.call("/api/stats", map[string]string{"game": a.game.p.ID, "user": user}, &out); err != nil {
 		return map[string]any{"error": err.Error()}
 	}
 	return out
@@ -386,19 +479,23 @@ func (a *App) onNetEvent(ev map[string]any) {
 
 // ---- online (called from the interface; "" = ok, otherwise the message to show) ----
 
-func (a *App) Login(user, pass string) string    { return errText(a.net.login(strings.TrimSpace(user), pass, false)) }
-func (a *App) Register(user, pass string) string { return errText(a.net.login(strings.TrimSpace(user), pass, true)) }
-func (a *App) Logout()                           { a.net.logout() }
+func (a *App) Login(user, pass string) string {
+	return errText(a.net.login(strings.TrimSpace(user), pass, false))
+}
+func (a *App) Register(user, pass string) string {
+	return errText(a.net.login(strings.TrimSpace(user), pass, true))
+}
+func (a *App) Logout() { a.net.logout() }
 
 // OnlineSnapshot: the interface calls it when it loads, to catch up with the live lobby.
 func (a *App) OnlineSnapshot() []map[string]any { return a.net.snapshot() }
-func (a *App) SetServer(s string) string         { return errText(a.net.setServer(s)) }
+func (a *App) SetServer(s string) string        { return errText(a.net.setServer(s)) }
 func (a *App) SetWaiting(on bool) string {
 	return errText(a.net.call("/api/status", map[string]bool{"waiting": on}, nil))
 }
 func (a *App) Invite(user string) string {
 	s := a.game.settings()
-	return errText(a.net.call("/api/invite", map[string]any{"to": user, "settings": map[string]any{"fps60": s.Fps60, "delay": s.NetDelay}}, nil))
+	return errText(a.net.call("/api/invite", map[string]any{"to": user, "settings": map[string]any{"fps60": a.game.p.opt(s, "fps60"), "delay": s.NetDelay}}, nil))
 }
 func (a *App) Respond(id string, accept bool) string {
 	return errText(a.net.call("/api/invite/respond", map[string]any{"id": id, "accept": accept}, nil))
@@ -406,15 +503,20 @@ func (a *App) Respond(id string, accept bool) string {
 func (a *App) CreateRoom(name, pass string, max int) string {
 	s := a.game.settings()
 	return errText(a.net.call("/api/rooms", map[string]any{"name": name, "password": pass, "max": max,
-		"settings": map[string]any{"fps60": s.Fps60, "delay": s.NetDelay}}, nil))
+		"settings": map[string]any{"fps60": a.game.p.opt(s, "fps60"), "delay": s.NetDelay}}, nil))
 }
 func (a *App) JoinRoom(id, pass string) string {
 	return errText(a.net.call("/api/rooms/join", map[string]string{"id": id, "password": pass}, nil))
 }
-func (a *App) LeaveRoom() string            { return errText(a.net.call("/api/rooms/leave", nil, nil)) }
-func (a *App) StartRoom() string            { return errText(a.net.call("/api/rooms/start", nil, nil)) }
-func (a *App) Kick(user string) string      { return errText(a.net.call("/api/rooms/kick", map[string]string{"user": user}, nil)) }
-func (a *App) Chat(text string) string      { return errText(a.net.call("/api/chat", map[string]string{"text": text}, nil)) }
+func (a *App) LeaveRoom() string { return errText(a.net.call("/api/rooms/leave", nil, nil)) }
+func (a *App) StartRoom() string { return errText(a.net.call("/api/rooms/start", nil, nil)) }
+func (a *App) Kick(user string) string {
+	return errText(a.net.call("/api/rooms/kick", map[string]string{"user": user}, nil))
+}
+func (a *App) Chat(text string) string {
+	return errText(a.net.call("/api/chat", map[string]string{"text": text}, nil))
+}
+
 // Search: accounts whose name contains q, online or not ({users, error}).
 func (a *App) Search(q string) map[string]any {
 	var out struct {

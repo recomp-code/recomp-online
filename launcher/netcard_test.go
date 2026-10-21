@@ -17,7 +17,7 @@ func TestCardPackUnpack(t *testing.T) {
 	os.WriteFile(filepath.Join(save, "icon.sys"), []byte("icon"), 0o644)
 	os.WriteFile(filepath.Join(root, "settings.toml"), []byte("[video]"), 0o644)
 
-	data, err := packCard(root)
+	data, err := packCard(root, "BASLUS-")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,27 +23,41 @@ import (
 
 const platformName = "macOS"
 
-var qualityIni = []string{"dbz.ini", "dbz_4x.ini", "dbz_3x.ini", "dbz_metalfx.ini"}
-
-// GPU per frame in a 60 fps fight, M2 Pro, 3200x1800 window: 6x 13.5 ms, 4x 7.3 ms, 3x 5.8 ms, MetalFX (3x + upscale
-// to the window) 10.5 ms -- MetalFX is the second most expensive, not a light option.
-var qualityOptions = []QualityOption{
-	{"Máxima (6x)", "La imagen más nítida; pide mucha GPU: para M Max o Ultra."},
-	{"Alta (4x)", "Para M Pro."},
-	{"Equilibrada (3x)", "La más ligera: para cualquier Mac con chip M."},
-	{"Apple MetalFX (3x reescalado)", "3x reescalado a tu pantalla con MetalFX: más nítida que 3x, pero pide casi el doble de GPU."},
-}
+// The quality presets are per game (profiles.go, Qualities["macOS"]).
 
 const fullscreenKey = "Option+Return (o Ctrl+Cmd+F)"
 
+// launcherHome: where the launcher keeps its own files (online.json): DBZ BT4's folder, as before.
+func launcherHome(launcherRoot string) string {
+	if d := os.Getenv("RECOMP_LAUNCHER_DATA"); d != "" {
+		return d
+	}
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, "Library", "Application Support", "DBZ_BT4")
+}
+
+// gameDir: DBZ BT4 is inside the app (Resources, Helpers); another game is a downloaded pack in
+// Application Support/Recomp/games/<id> (TODO(mac): the pack's layout for macOS).
+func gameDir(launcherRoot string, p *profile) string {
+	if p.ID == dbzProfile.ID {
+		return launcherRoot
+	}
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, "Library", "Application Support", "Recomp", "games", p.ID)
+}
+
 func (g *game) setPaths() {
+	if g.p.ID != dbzProfile.ID {
+		g.home, g.res = g.dir, g.dir
+		_ = os.MkdirAll(g.home, 0o755)
+		g.runtimeDir, g.gshostDir = filepath.Join(g.dir, "runtime"), filepath.Join(g.dir, "gshost")
+		g.cfgPath, g.logs = filepath.Join(g.dir, "settings.cfg"), filepath.Join(g.dir, "logs")
+		g.runner = filepath.Join(g.runtimeDir, "ps2EntryRunner")
+		return
+	}
 	contents := filepath.Dir(g.root) // Contents/MacOS -> Contents
 	g.res = filepath.Join(contents, "Resources")
-	g.home = os.Getenv("RECOMP_LAUNCHER_DATA")
-	if g.home == "" {
-		h, _ := os.UserHomeDir()
-		g.home = filepath.Join(h, "Library", "Application Support", "DBZ_BT4")
-	}
+	g.home = launcherHome(g.root)
 	_ = os.MkdirAll(g.home, 0o755)
 	g.runtimeDir, g.gshostDir = filepath.Join(g.home, "runtime"), filepath.Join(g.home, "gshost")
 	g.cfgPath, g.logs = filepath.Join(g.home, "DBZ_BT4.cfg"), filepath.Join(g.home, "logs")
@@ -70,7 +84,7 @@ func (g *game) importOldSettings() {
 	}
 	s := "iso=" + iso + "\n"
 	if q, ok := read("quality"); ok {
-		if n, err := strconv.Atoi(q); err == nil && n >= 0 && n < len(qualityIni) {
+		if n, err := strconv.Atoi(q); err == nil && n >= 0 && n < len(g.p.qualities()) {
 			s += "quality=" + q + "\n"
 		}
 	}
@@ -143,7 +157,7 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 		return "", "", nil, err
 	}
 	touchISO(s.ISO)
-	name := qualityIni[s.Quality]
+	name := g.hostIni(s, s.Quality)
 	ini := filepath.Join(g.gshostDir, name)
 	if !fileExists(ini) {
 		if err := copyWritable(filepath.Join(g.res, "presets", name), ini); err != nil {

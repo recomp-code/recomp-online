@@ -2,7 +2,7 @@
 //
 // Build (no Wails CLI needed):
 //
-//	go build -tags desktop,production -trimpath -ldflags "-H windowsgui -s -w -X main.defaultServer=https://online.tudominio.com" -o DBZ_BT4.exe
+//	go build -tags desktop,production -trimpath -ldflags "-H windowsgui -s -w -X main.defaultServer=https://online.tudominio.com" -o Recomp.exe
 //
 // macOS (cgo; the app bundle around it is made by dbz-bt4-recomp's macos/make_dist.sh):
 //
@@ -38,25 +38,25 @@ func main() {
 		_ = app.game.prepare(*iso)
 	}
 	err := wails.Run(&options.App{
-		Title:             gameTitle,
-		Width:             1180,
-		Height:            720,
-		MinWidth:          980,
-		MinHeight:         620,
-		Frameless:         true,
-		StartHidden:       *direct && app.game.ready(),
-		BackgroundColour:  &options.RGBA{R: 14, G: 18, B: 26, A: 255},
-		AssetServer:       &assetserver.Options{Assets: assets},
-		OnStartup:         app.startup,
-		OnShutdown:        app.shutdown,
-		Bind:              []interface{}{app},
-		DragAndDrop:       &options.DragAndDrop{EnableFileDrop: true}, // app.js stops the browser from opening dropped files
+		Title:                    "Recomp",
+		Width:                    1180,
+		Height:                   720,
+		MinWidth:                 980,
+		MinHeight:                620,
+		Frameless:                true,
+		StartHidden:              *direct && app.game.ready(),
+		BackgroundColour:         &options.RGBA{R: 14, G: 18, B: 26, A: 255},
+		AssetServer:              &assetserver.Options{Assets: assets},
+		OnStartup:                app.startup,
+		OnShutdown:               app.shutdown,
+		Bind:                     []interface{}{app},
+		DragAndDrop:              &options.DragAndDrop{EnableFileDrop: true}, // app.js stops the browser from opening dropped files
 		EnableDefaultContextMenu: false,
 		Menu:                     appMenu(), // macOS: the app and Edit menus (Cmd+Q, Cmd+C / Cmd+V in the fields)
 		Windows: &windows.Options{
-			Theme:                windows.Dark,
-			DisableWindowIcon:    false,
-			WebviewUserDataPath:  filepath.Join(os.Getenv("LOCALAPPDATA"), "RecompLauncher", "webview"),
+			Theme:               windows.Dark,
+			DisableWindowIcon:   false,
+			WebviewUserDataPath: filepath.Join(os.Getenv("LOCALAPPDATA"), "RecompLauncher", "webview"),
 		},
 	})
 	if err != nil {

@@ -176,7 +176,7 @@ func (g *game) prepareDLSS5Host() (string, error) {
 	if parts == nil {
 		return "", errors.New("DLSS 5 necesita una NVIDIA RTX y DLSS 5 Swapper (o sus archivos en la carpeta DLSS)")
 	}
-	dir := filepath.Join(g.root, "gshost_dlss5")
+	dir := filepath.Join(g.dir, "gshost_dlss5") // beside the game's own gshost\
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

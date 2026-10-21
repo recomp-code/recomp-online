@@ -20,7 +20,8 @@ import (
 	"time"
 )
 
-// cardRoot: where the game keeps its memory cards (savedata/ beside data/, on both systems).
+// cardRoot: where the game keeps its memory cards (savedata/ beside data/, on both systems; for PS2Recomp games the
+// launcher points PS2X_MC_ROOT there).
 func (g *game) cardRoot() string { return filepath.Join(g.runtimeDir, "savedata") }
 
 // packCard zips the game's save folders (not the runtime's settings or logs). An empty card is an empty zip: still
@@ -31,12 +32,12 @@ func hostJunk(name string) bool {
 	return strings.HasPrefix(name, ".") || l == "thumbs.db" || l == "desktop.ini"
 }
 
-func packCard(root string) ([]byte, error) {
+func packCard(root, prefix string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	ents, _ := os.ReadDir(root)
 	for _, e := range ents {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "BASLUS-") {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
 			continue
 		}
 		dir := filepath.Join(root, e.Name())
@@ -109,7 +110,7 @@ const maxCardBytes = 512 << 10
 func (a *App) matchCard(m *netMatch) (string, error) {
 	dir := filepath.Join(a.game.home, "netcard")
 	if m.Player == 1 {
-		data, err := packCard(a.game.cardRoot())
+		data, err := packCard(a.game.cardRoot(), a.game.p.CardPrefix)
 		if err != nil {
 			return "", fmt.Errorf("no pude leer tu memory card: %v", err)
 		}

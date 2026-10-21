@@ -1,9 +1,9 @@
 package main
 
-// The game side of the launcher for DBZ Budokai Tenkaichi 4 (Team BT4's mod of BT3, Beta 14 Rev2): the player's ISO
-// (checked and the boot files copied out of it), the settings and starting ps2EntryRunner -- offline, or online with
-// the match the server handed out. What differs per system (paths, quality presets, the GS host's renderer, DLSS on
-// Windows) is in game_windows.go / game_darwin.go.
+// The game side of the launcher, for one installed game (its profile, profiles.go): the player's ISO (checked and
+// the boot files copied out of it), the settings and starting ps2EntryRunner -- offline, or online with the match
+// the server handed out. What differs per system (paths, the GS host's renderer, DLSS on Windows) is in
+// game_windows.go / game_darwin.go; what differs per game is in the profile.
 
 import (
 	"bufio"
@@ -23,47 +23,50 @@ import (
 	"unicode"
 )
 
-const (
-	gameID        = "dbzbt4"
-	gameTitle     = "Dragon Ball Z Budokai Tenkaichi 4"
-	gameElf       = "SLUS_219.78"
-	gameElfSha256 = "224525C5639C00E01C2604C4685D307BC739C041000DCF8C69A4F884F465E8A4"
-	gameSerial    = "SLUS-21978"
-)
-
 type Settings struct {
-	ISO        string `json:"iso"`
-	Quality    int    `json:"quality"`
-	Fps60      bool   `json:"fps60"`
-	Fullscreen bool   `json:"fullscreen"`
-	NetDelay   int    `json:"netDelay"` // online input delay in frames, 0 = automatic
-	Unlock     bool   `json:"unlock"`   // everything unlocked from the start (PS2X_UNLOCK_ALL)
+	ISO        string          `json:"iso"`
+	Quality    int             `json:"quality"`
+	Fullscreen bool            `json:"fullscreen"`
+	NetDelay   int             `json:"netDelay"` // online input delay in frames, 0 = automatic
+	Opts       map[string]bool `json:"opts"`     // the game's own switches (profile.Options)
 }
 
 type game struct {
-	// root: the launcher's folder. home: where it writes (settings, logs, the runtime's data); res: its read-only
-	// files. On Windows the three are the zip's folder; on macOS home is ~/Library/Application Support/DBZ_BT4 and
-	// res the app's Resources (a downloaded app runs from a read-only copy). paths_*.go sets them.
-	root, home, res, runtimeDir, dataDir, gshostDir, cfgPath, dlssDir, logs, runner, sites string
-	mu                                                                                     sync.Mutex
-	attach                                                                                 string // [handover] the ring the next game takes over
-	handingOver                                                                            bool   // [handover] the running game is leaving its window
-	cfg                                                                                    Settings
-	proc                                                                                   *os.Process
+	p *profile
+	// root: the launcher's folder. dir: this game's folder (root itself for an old DBZ BT4 zip). home: where it writes
+	// (settings, logs, the runtime's data); res: its read-only files. On Windows the three are the game's folder; on
+	// macOS home is in Application Support and res the app's Resources. game_*.go sets them.
+	root, dir, home, res, runtimeDir, dataDir, gshostDir, cfgPath, dlssDir, logs, runner, sites string
+	mu                                                                                          sync.Mutex
+	attach                                                                                      string // [handover] the ring the next game takes over
+	handingOver                                                                                 bool   // [handover] the running game is leaving its window
+	cfg                                                                                         Settings
+	proc                                                                                        *os.Process
 }
 
-func newGame(root string) *game {
-	g := &game{root: root}
+func newGame(root, dir string, p *profile) *game {
+	g := &game{p: p, root: root, dir: dir}
 	g.setPaths()
 	g.dataDir = filepath.Join(g.runtimeDir, "data")
 	g.load()
 	return g
 }
 
-// ---- settings (same key=value file as the v1.x launcher, so an update keeps them) ----
+// installed: the game's runtime is there (the ISO may still be missing).
+func (g *game) installed() bool { return fileExists(g.runner) }
+
+// ---- settings (key=value, the same file as the v1.x launcher, so an update keeps them) ----
+
+func (g *game) defaults() Settings {
+	s := Settings{Quality: g.defaultQuality(), Fullscreen: true, Opts: map[string]bool{}}
+	for _, o := range g.p.Options {
+		s.Opts[o.Key] = o.Default
+	}
+	return s
+}
 
 func (g *game) load() {
-	g.cfg = Settings{Quality: g.defaultQuality(), Fps60: true, Fullscreen: true, Unlock: true}
+	g.cfg = g.defaults()
 	f, err := os.Open(g.cfgPath)
 	if err != nil {
 		return
@@ -80,18 +83,20 @@ func (g *game) load() {
 		case "iso":
 			g.cfg.ISO = v
 		case "quality":
-			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n < len(qualityIni) {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n < len(g.p.qualities()) {
 				g.cfg.Quality = n
 			}
-		case "fps60":
-			g.cfg.Fps60 = v == "1"
 		case "fullscreen":
 			g.cfg.Fullscreen = v == "1"
-		case "unlock":
-			g.cfg.Unlock = v == "1"
 		case "netdelay":
 			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 10 {
 				g.cfg.NetDelay = n
+			}
+		default:
+			for _, o := range g.p.Options {
+				if o.Key == k {
+					g.cfg.Opts[k] = v == "1"
+				}
 			}
 		}
 	}
@@ -105,22 +110,37 @@ func b01(b bool) string {
 }
 
 func (g *game) save() error {
-	s := fmt.Sprintf("iso=%s\nquality=%d\nfps60=%s\nfullscreen=%s\nnetdelay=%d\nunlock=%s\n", g.cfg.ISO, g.cfg.Quality, b01(g.cfg.Fps60), b01(g.cfg.Fullscreen), g.cfg.NetDelay, b01(g.cfg.Unlock))
-	return os.WriteFile(g.cfgPath, []byte(s), 0o644)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "iso=%s\nquality=%d\nfullscreen=%s\nnetdelay=%d\n", g.cfg.ISO, g.cfg.Quality, b01(g.cfg.Fullscreen), g.cfg.NetDelay)
+	for _, o := range g.p.Options {
+		fmt.Fprintf(&sb, "%s=%s\n", o.Key, b01(g.p.opt(g.cfg, o.Key)))
+	}
+	_ = os.MkdirAll(filepath.Dir(g.cfgPath), 0o755)
+	return os.WriteFile(g.cfgPath, []byte(sb.String()), 0o644)
 }
 
 func (g *game) settings() Settings {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.cfg
+	s := g.cfg
+	s.Opts = map[string]bool{}
+	for k, v := range g.cfg.Opts {
+		s.Opts[k] = v
+	}
+	return s
 }
 
 func (g *game) setSettings(s Settings) error {
-	if s.Quality < 0 || s.Quality >= len(qualityIni) || s.NetDelay < 0 || s.NetDelay > 10 {
+	if s.Quality < 0 || s.Quality >= len(g.p.qualities()) || s.NetDelay < 0 || s.NetDelay > 10 {
 		return errors.New("ajuste no válido")
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	opts := map[string]bool{}
+	for _, o := range g.p.Options { // only the game's own keys
+		opts[o.Key] = g.p.opt(s, o.Key)
+	}
+	s.Opts = opts
 	s.ISO = g.cfg.ISO // the ISO only changes through chooseISO (it is checked there)
 	g.cfg = s
 	return g.save()
@@ -131,12 +151,12 @@ func (g *game) setSettings(s Settings) error {
 func (g *game) ready() bool {
 	s := g.settings()
 	_, e1 := os.Stat(s.ISO)
-	_, e2 := os.Stat(filepath.Join(g.dataDir, "SLUS_216.78"))
-	return s.ISO != "" && e1 == nil && e2 == nil
+	_, e2 := os.Stat(filepath.Join(g.dataDir, g.p.BootName))
+	return g.installed() && s.ISO != "" && e1 == nil && e2 == nil
 }
 
-// prepare checks the disc is BT4 Beta 14 Rev2 (the game code was recompiled from exactly that ELF) and copies the
-// ELF and the small boot files out of it. The big AFS archives are streamed from the ISO by the game.
+// prepare checks the disc is the one the game code was recompiled from (the ELF's hash) and copies the ELF and the
+// small boot files out of it (the IOP modules). The big archives are streamed from the ISO by the game.
 func (g *game) prepare(isoPath string) error {
 	im, err := openISO(isoPath)
 	if err != nil {
@@ -147,22 +167,26 @@ func (g *game) prepare(isoPath string) error {
 	if err != nil {
 		return err
 	}
-	elf := findEntry(top, gameElf)
+	elf := findEntry(top, g.p.Elf)
 	if elf == nil {
-		return fmt.Errorf("esta ISO no es DBZ BT4 (no tiene %s): hace falta la Beta 14 Rev2", gameElf)
+		return fmt.Errorf("esta ISO no es %s (no tiene %s)", g.p.Title, g.p.Elf)
 	}
 	data, err := im.read(elf)
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(data)
-	if !strings.EqualFold(hex.EncodeToString(sum[:]), gameElfSha256) {
-		return errors.New("esta ISO es otra versión del mod: el juego está recompilado para la Beta 14 Rev2 (SLUS-219.78)")
+	if !strings.EqualFold(hex.EncodeToString(sum[:]), g.p.ElfSHA256) {
+		return fmt.Errorf("esta ISO es otra versión de %s: el juego está recompilado para %s", g.p.Title, g.p.Serial)
 	}
 	if err := os.MkdirAll(g.dataDir, 0o755); err != nil {
 		return err
 	}
-	for _, n := range []string{"SLUS_216.78", gameElf} {
+	names := []string{g.p.Elf}
+	if g.p.BootName != g.p.Elf {
+		names = append(names, g.p.BootName)
+	}
+	for _, n := range names {
 		if err := os.WriteFile(filepath.Join(g.dataDir, n), data, 0o644); err != nil {
 			return err
 		}
@@ -172,7 +196,7 @@ func (g *game) prepare(isoPath string) error {
 			_ = os.WriteFile(filepath.Join(g.dataDir, "SYSTEM.CNF"), b, 0o644)
 		}
 	}
-	for _, sub := range []string{"IRX", "BIN"} {
+	for _, sub := range g.p.CopyDirs {
 		d := findEntry(top, sub)
 		if d == nil || !d.Dir {
 			continue
@@ -203,10 +227,27 @@ func (g *game) prepare(isoPath string) error {
 	return err
 }
 
-// QualityOption: one entry of the Calidad menu (the presets are per system).
+// QualityOption: one entry of the Calidad menu (the presets are per game and system).
 type QualityOption struct {
 	Name string `json:"name"`
 	Hint string `json:"hint"`
+}
+
+func (g *game) qualityOptions() []QualityOption {
+	var out []QualityOption
+	for _, q := range g.p.qualities() {
+		out = append(out, q.QualityOption)
+	}
+	return out
+}
+
+// hostIni: the GS host ini for the chosen quality and the game's options.
+func (g *game) hostIni(s Settings, q int) string {
+	p := g.p.qualities()[q]
+	if g.p.iniFor != nil {
+		return g.p.iniFor(g.p, p, s)
+	}
+	return p.Ini
 }
 
 type DLSSInfo struct {
@@ -295,20 +336,22 @@ func (m *netMatch) valid() bool {
 	return hostPortRe.MatchString(m.Relay) && tokenRe.MatchString(m.Token) && (m.Player == 1 || m.Player == 2) && m.Delay >= 0 && m.Delay <= 10
 }
 
-// build identifies the exact game build: lockstep online play needs the same runner and 60 fps rules on both PCs.
-// netProtocol: bump it whenever the netplay code changes what crosses the wire or how a frame is simulated.
-// net2: the games unlock everything at the main menu in an online match (PS2X_UNLOCK_ALL), which a net1 game does not.
-const netProtocol = "net2"
-
 // build: who can play with whom online. Not a hash of the executable (a Mac and a Windows copy of the same game never
 // match byte for byte, and crossplay must work) but what decides the simulation besides the disc, whose ELF is
-// already checked: the netplay protocol and the 60 fps table. Both ports build the runtime with exact floating point
-// (-ffp-contract=off), and the games compare a hash of their state as they play, so a difference shows at once.
-// The Mac launcher computes the same: netProtocol + "-" + the first 8 hex of sha256(fps60_sites.txt with CRLF -> LF, trailing
-// blanks trimmed).
+// already checked: the game's netplay protocol, and for DBZ BT4 its 60 fps table. Both ports build the runtime with
+// exact floating point (-ffp-contract=off), and the games compare a hash of their state as they play, so a
+// difference shows at once. The Mac launcher computes the same: netProtocol + "-" + the first 8 hex of
+// sha256(fps60_sites.txt with CRLF -> LF, trailing blanks trimmed).
 func (g *game) build() string {
-	b, _ := os.ReadFile(g.sites)
-	return netProtocol + "-" + fps60Key(b)
+	b := g.p.netProtocol
+	if g.p.Fps60Sites {
+		t, _ := os.ReadFile(g.sites)
+		b += "-" + fps60Key(t)
+	}
+	if v := g.packVersion(); v != "" && !g.p.Fps60Sites {
+		b += "-" + v
+	}
+	return b
 }
 
 func fps60Key(table []byte) string {
@@ -336,7 +379,7 @@ func (g *game) running() bool {
 // play starts the game and calls done(exitCode) when it closes. m == nil plays offline.
 func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if !g.ready() {
-		return errors.New("primero elige tu ISO de DBZ BT4 Beta 14 Rev2 (SLUS-219.78)")
+		return fmt.Errorf("primero elige tu ISO de %s (%s)", g.p.Title, g.p.Serial)
 	}
 	if g.running() {
 		return errors.New("el juego ya está abierto")
@@ -361,16 +404,18 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if s.Fullscreen {
 		args += " -fullscreen"
 	}
-	fps60, unlock := s.Fps60, s.Unlock
 	env := append(os.Environ(),
 		"PS2X_CD_IMAGE="+s.ISO, "PS2X_GS_LIVE=1", "PS2X_GSHOST_ARGS="+args,
-		"PS2X_LIVE_SERIAL="+gameSerial, "PS2X_LIVE_TITLE="+gameTitle,
-		fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h), "PS2X_HALFSTEP="+g.sites)
+		"PS2X_LIVE_SERIAL="+g.p.Serial, "PS2X_LIVE_TITLE="+g.p.Title,
+		fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h))
 	env = append(env, penv...)
+	if g.p.ID != dbzProfile.ID { // the game's own memory card folder (DBZ's runtime keeps it in savedata/ by itself)
+		_ = os.MkdirAll(g.cardRoot(), 0o755)
+		if m == nil {
+			env = append(env, "PS2X_MC_ROOT="+g.cardRoot())
+		}
+	}
 	if m != nil {
-		fps60 = m.Fps60 // both players must run the same mode: the match decides
-		// both games must also start from the same unlocks: online, everything is unlocked (the whole roster for both)
-		unlock = true
 		// the input delay: the match's (the inviter's setting) or, at 0 = "Automático", measured by the two games
 		// on the real path when they connect (player 1 pings player 2 through the relay and both use its choice)
 		delay := "auto"
@@ -378,29 +423,18 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 			delay = strconv.Itoa(m.Delay)
 		}
 		env = append(env, "PS2X_NET_RELAY="+m.Relay, "PS2X_NET_TOKEN="+m.Token, fmt.Sprintf("PS2X_NET_PLAYER=%d", m.Player),
-			"PS2X_NET_DELAY="+delay, "NET_OVERLAY=1", "PS2X_NET_JUMP=1",
-			// the jump stops at the game's multiplayer menu: player 1 picks Simple / Equipos / Equipos PD there, as on
-			// the console, and both go on to character select together
-			"PS2X_NET_JUMP_STOP=menu",
-			// and each game boots on its own: the two meet at that menu ("waiting for <opponent>" until the other one
-			// is there), instead of one waiting before the boot for the other to start
-			"PS2X_NET_MEET=menu", "PS2X_NET_PEER_NAME="+safeName(m.Opponent))
-		// Lockstep needs two identical simulations, whatever each machine's speed or system:
-		//  - the virtual clock (frame-stepped, fibers): the game's threads, disc and sound advance by frames, not by the
-		//    host's clock (without it the RAMs differed by frame 60 as soon as one side was slower);
-		//  - the same random seed and clock (both read the host's time otherwise), from the match token;
-		//  - the same memory card (matchCard);
-		//  - and the two compare a hash of the game state every second, so any difference shows at once.
-		seed, rtc := matchSeeds(m.Token)
-		env = append(env, "PS2X_FRAMESTEP=1", "PS2X_FIBERS=1", "PS2X_DETHASH=60",
-			fmt.Sprintf("PS2X_RANDSEED=%d", seed), fmt.Sprintf("PS2X_RTC=%d", rtc))
+			"PS2X_NET_DELAY="+delay, "PS2X_NET_PEER_NAME="+safeName(m.Opponent))
+		// the same clock on both sides (both games read the host's time otherwise), from the match token; the game's
+		// state hash every second (both players must use the same interval: a diagnostic one given to the launcher
+		// itself, e.g. 1 = every frame, wins over the default 60)
+		_, rtc := matchSeeds(m.Token)
+		dethash := "60"
+		if v := os.Getenv("PS2X_DETHASH"); v != "" {
+			dethash = v
+		}
+		env = append(env, fmt.Sprintf("PS2X_RTC=%d", rtc), "PS2X_DETHASH="+dethash)
 		if m.CardDir != "" {
 			env = append(env, "PS2X_MC_ROOT="+m.CardDir)
-		}
-		// diagnostics: a hash interval given to the launcher itself (e.g. 1, every frame) wins over the default 60;
-		// both players must use the same one
-		if v := os.Getenv("PS2X_DETHASH"); v != "" {
-			env = append(env, "PS2X_DETHASH="+v)
 		}
 		_ = os.Remove(g.netStatusPath()) // a previous match's "offline" must not end this one
 		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
@@ -408,7 +442,9 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		_ = os.Remove(g.netFightsPath())
 		env = append(env, "PS2X_NET_STATS_FILE="+g.netFightsPath())
 	}
-	env = append(env, "PS2X_FPS60="+b01(fps60), "PS2X_UNLOCK_ALL="+b01(unlock))
+	if g.p.env != nil {
+		env = append(env, g.p.env(g, s, m)...)
+	}
 	// [handover] every game can leave its window to the next one (handover), and the next one takes it over
 	_ = os.Remove(g.handoverPath())
 	env = append(env, "PS2X_LIVE_RING_FILE="+g.ringPath(), "PS2X_HANDOVER_FILE="+g.handoverPath())
@@ -418,8 +454,8 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		g.attach = ""
 	}
 	g.mu.Unlock()
-	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, "SLUS_216.78"))
-	cmd.Dir, cmd.Env = g.runtimeDir, env
+	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, g.p.BootName))
+	cmd.Dir, cmd.Env = g.bootDir(), env
 	cleanup := g.prepareCmd(cmd)
 	if err := cmd.Start(); err != nil {
 		cleanup()
@@ -428,7 +464,6 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	g.mu.Lock()
 	g.proc = cmd.Process
 	g.mu.Unlock()
-	started := time.Now()
 	go func() {
 		err := cmd.Wait()
 		code := 0
@@ -447,28 +482,21 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		if handedOver { // [handover] it left its window to the next game: not a game that ended
 			return
 		}
-		g.readBackFps60(hostIni)
-		_ = started
+		if g.p.afterGame != nil {
+			g.p.afterGame(g, hostIni)
+		}
 		done(code, filepath.Join(g.logs, "juego.log"))
 	}()
 	return nil
 }
 
-// readBackFps60: the in-game menu saves "DbzFps60 = true/false" in its ini; it becomes the next start's default.
-func (g *game) readBackFps60(iniPath string) {
-	b, err := os.ReadFile(iniPath)
-	if err != nil {
-		return
+// bootDir: the runner's working folder. The BT3 runtime (DBZ) finds its assets next to it; PS2Recomp's (BR4) finds
+// the disc's IOP modules (MODULES/) next to the ELF.
+func (g *game) bootDir() string {
+	if g.p.ID == dbzProfile.ID {
+		return g.runtimeDir
 	}
-	for _, l := range strings.Split(string(b), "\n") {
-		l = strings.ReplaceAll(strings.TrimSpace(l), " ", "")
-		if strings.HasPrefix(strings.ToLower(l), "dbzfps60=") {
-			g.mu.Lock()
-			g.cfg.Fps60 = strings.HasSuffix(strings.ToLower(l), "true")
-			_ = g.save()
-			g.mu.Unlock()
-		}
-	}
+	return g.dataDir
 }
 
 // netStatusPath: where an online game says whether it is still online (PS2X_NET_STATUS_FILE, see watchOnline).

@@ -297,3 +297,17 @@ body.pad .friend:focus { background: var(--row); }
 .st-top .r.mine .r-name { color: var(--green); }
 .st-top .rank { width: 34px; color: var(--faint); font-size: 13px; text-align: right; }
 .st-top .r:nth-child(-n+3) .rank { color: #e4c260; font-weight: 600; }
+
+/* [library] several games: the sidebar rows pick one; "+ Agregar juego" opens the catalog */
+.game-row.pick { cursor: pointer; }
+.game-row.pick:hover, .game-row.pick:focus { background: var(--row); color: #fff; outline: none; }
+.add-game { margin: 4px 14px 2px; font-size: 12px; }
+.dlg.add { width: 460px; }
+.dlg.add .cat { display: flex; flex-direction: column; background: rgba(0,0,0,.18); border-radius: 3px; }
+.dlg.add .sub-h { padding: 6px 0 0; }
+.dlg.add small { color: var(--faint); line-height: 1.4; }
+/* Bloody Roar 4: our own art (no game artwork): blood red to night */
+.banner.br { height: 300px; background: radial-gradient(ellipse at 70% 20%, #c42a2a 0%, rgba(196,42,42,0) 55%),
+  linear-gradient(160deg, #3a0b0b 0%, #160707 55%, #0e121a 100%); }
+.banner.br h1 { font-size: 54px; letter-spacing: .04em; text-shadow: 0 0 24px rgba(220,40,40,.45), 3px 3px 0 rgba(0,0,0,.5); }
+.banner.br .banner-lines { opacity: .12; }

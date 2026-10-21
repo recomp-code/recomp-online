@@ -37,6 +37,7 @@ type Settings struct {
 	Fps60      bool   `json:"fps60"`
 	Fullscreen bool   `json:"fullscreen"`
 	NetDelay   int    `json:"netDelay"` // online input delay in frames, 0 = automatic
+	Unlock     bool   `json:"unlock"`   // everything unlocked from the start (PS2X_UNLOCK_ALL)
 }
 
 type game struct {
@@ -62,7 +63,7 @@ func newGame(root string) *game {
 // ---- settings (same key=value file as the v1.x launcher, so an update keeps them) ----
 
 func (g *game) load() {
-	g.cfg = Settings{Quality: g.defaultQuality(), Fps60: true, Fullscreen: true}
+	g.cfg = Settings{Quality: g.defaultQuality(), Fps60: true, Fullscreen: true, Unlock: true}
 	f, err := os.Open(g.cfgPath)
 	if err != nil {
 		return
@@ -86,6 +87,8 @@ func (g *game) load() {
 			g.cfg.Fps60 = v == "1"
 		case "fullscreen":
 			g.cfg.Fullscreen = v == "1"
+		case "unlock":
+			g.cfg.Unlock = v == "1"
 		case "netdelay":
 			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 10 {
 				g.cfg.NetDelay = n
@@ -102,7 +105,7 @@ func b01(b bool) string {
 }
 
 func (g *game) save() error {
-	s := fmt.Sprintf("iso=%s\nquality=%d\nfps60=%s\nfullscreen=%s\nnetdelay=%d\n", g.cfg.ISO, g.cfg.Quality, b01(g.cfg.Fps60), b01(g.cfg.Fullscreen), g.cfg.NetDelay)
+	s := fmt.Sprintf("iso=%s\nquality=%d\nfps60=%s\nfullscreen=%s\nnetdelay=%d\nunlock=%s\n", g.cfg.ISO, g.cfg.Quality, b01(g.cfg.Fps60), b01(g.cfg.Fullscreen), g.cfg.NetDelay, b01(g.cfg.Unlock))
 	return os.WriteFile(g.cfgPath, []byte(s), 0o644)
 }
 
@@ -294,13 +297,14 @@ func (m *netMatch) valid() bool {
 
 // build identifies the exact game build: lockstep online play needs the same runner and 60 fps rules on both PCs.
 // netProtocol: bump it whenever the netplay code changes what crosses the wire or how a frame is simulated.
-const netProtocol = "net1"
+// net2: the games unlock everything at the main menu in an online match (PS2X_UNLOCK_ALL), which a net1 game does not.
+const netProtocol = "net2"
 
 // build: who can play with whom online. Not a hash of the executable (a Mac and a Windows copy of the same game never
 // match byte for byte, and crossplay must work) but what decides the simulation besides the disc, whose ELF is
 // already checked: the netplay protocol and the 60 fps table. Both ports build the runtime with exact floating point
 // (-ffp-contract=off), and the games compare a hash of their state as they play, so a difference shows at once.
-// The Mac launcher computes the same: "net1-" + the first 8 hex of sha256(fps60_sites.txt with CRLF -> LF, trailing
+// The Mac launcher computes the same: netProtocol + "-" + the first 8 hex of sha256(fps60_sites.txt with CRLF -> LF, trailing
 // blanks trimmed).
 func (g *game) build() string {
 	b, _ := os.ReadFile(g.sites)
@@ -357,7 +361,7 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if s.Fullscreen {
 		args += " -fullscreen"
 	}
-	fps60 := s.Fps60
+	fps60, unlock := s.Fps60, s.Unlock
 	env := append(os.Environ(),
 		"PS2X_CD_IMAGE="+s.ISO, "PS2X_GS_LIVE=1", "PS2X_GSHOST_ARGS="+args,
 		"PS2X_LIVE_SERIAL="+gameSerial, "PS2X_LIVE_TITLE="+gameTitle,
@@ -365,6 +369,8 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	env = append(env, penv...)
 	if m != nil {
 		fps60 = m.Fps60 // both players must run the same mode: the match decides
+		// both games must also start from the same unlocks: online, everything is unlocked (the whole roster for both)
+		unlock = true
 		// the input delay: the match's (the inviter's setting) or, at 0 = "Automático", measured by the two games
 		// on the real path when they connect (player 1 pings player 2 through the relay and both use its choice)
 		delay := "auto"
@@ -399,7 +405,7 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		_ = os.Remove(g.netStatusPath()) // a previous match's "offline" must not end this one
 		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
 	}
-	env = append(env, "PS2X_FPS60="+b01(fps60))
+	env = append(env, "PS2X_FPS60="+b01(fps60), "PS2X_UNLOCK_ALL="+b01(unlock))
 	// [handover] every game can leave its window to the next one (handover), and the next one takes it over
 	_ = os.Remove(g.handoverPath())
 	env = append(env, "PS2X_LIVE_RING_FILE="+g.ringPath(), "PS2X_HANDOVER_FILE="+g.handoverPath())

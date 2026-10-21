@@ -163,6 +163,9 @@ func (a *App) start(m *netMatch) string {
 	a.match = m
 	a.mu.Unlock()
 	a.emit("game", map[string]any{"running": true, "online": m != nil})
+	if m != nil {
+		go a.watchOnline(m)
+	}
 	a.hk.start(func() { a.toggleOverlay() })
 	a.pad.start(func() { a.toggleOverlay() })
 	// the launcher stays on screen while the game boots (it says Shift+Tab brings it back), then goes to the
@@ -205,6 +208,32 @@ func (a *App) toggleOverlay() {
 		return
 	}
 	a.showOverlay()
+}
+
+// watchOnline: while an online game runs, follow what it reports (PS2X_NET_STATUS_FILE). When it leaves the online
+// session -- nobody at the meeting in the multiplayer menu, the other player gone -- the match ends on the server at
+// once and the launcher stops showing it as being played, though the game stays open offline.
+func (a *App) watchOnline(m *netMatch) {
+	path := a.game.netStatusPath()
+	for a.game.running() {
+		time.Sleep(time.Second)
+		b, err := os.ReadFile(path)
+		if err != nil || !strings.HasPrefix(string(b), "offline") {
+			continue
+		}
+		a.mu.Lock()
+		cur := a.match
+		if cur == m {
+			a.match = nil
+		}
+		a.mu.Unlock()
+		if cur != m {
+			return
+		}
+		_ = a.net.call("/api/match/end", map[string]string{"id": m.ID}, nil)
+		a.emit("game_offline", map[string]any{"why": strings.TrimSpace(strings.TrimPrefix(string(b), "offline"))})
+		return
+	}
 }
 
 // LeaveMatch (the overlay's "Salir de la partida online"): closes the game; the match ends on the server when it

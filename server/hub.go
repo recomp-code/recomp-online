@@ -79,7 +79,6 @@ type match struct {
 	Settings settings  `json:"settings"`
 	Started  time.Time `json:"started"`
 	token    string
-	endedBy  map[string]bool
 	card     []byte // [netcard] player 1's memory card for this match (both games boot from it); in memory only
 }
 
@@ -435,7 +434,7 @@ func (h *hub) expireInvites() {
 
 func (h *hub) startMatchLocked(game, p1, p2, roomID string, s settings) *match {
 	m := &match{ID: randomHex(8), Game: game, P1: p1, P2: p2, Room: roomID, Settings: s, Started: time.Now().UTC(),
-		token: randomHex(16), endedBy: map[string]bool{}}
+		token: randomHex(16)}
 	h.matches[m.ID] = m
 	h.playing[lc(p1)] = m.ID
 	h.playing[lc(p2)] = m.ID
@@ -495,7 +494,9 @@ func (h *hub) endMatch(id, why string) {
 	log.Printf("match %s ended (%s)", id, why)
 }
 
-// reportEnd: the launcher saw the game close. The match ends when both said so.
+// reportEnd: a launcher saw its game close, or its game left the online session. That ends the match for both: it
+// cannot go on with one player, and waiting for the other's report kept both shown as playing until the relay's
+// idle timeout whenever one launcher never reported (closed with the game, or the game ended offline).
 func (h *hub) reportEnd(user, id string) {
 	h.mu.Lock()
 	m := h.matches[id]
@@ -503,12 +504,8 @@ func (h *hub) reportEnd(user, id string) {
 		h.mu.Unlock()
 		return
 	}
-	m.endedBy[lc(user)] = true
-	both := len(m.endedBy) == 2
 	h.mu.Unlock()
-	if both {
-		h.endMatch(id, "terminada")
-	}
+	h.endMatch(id, user+" salió de la partida")
 }
 
 // ---- rooms ------------------------------------------------------------------------------

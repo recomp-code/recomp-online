@@ -389,6 +389,8 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		if m.CardDir != "" {
 			env = append(env, "PS2X_MC_ROOT="+m.CardDir)
 		}
+		_ = os.Remove(g.netStatusPath()) // a previous match's "offline" must not end this one
+		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
 	}
 	env = append(env, "PS2X_FPS60="+b01(fps60))
 	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, "SLUS_216.78"))
@@ -438,6 +440,9 @@ func (g *game) readBackFps60(iniPath string) {
 		}
 	}
 }
+
+// netStatusPath: where an online game says whether it is still online (PS2X_NET_STATUS_FILE, see watchOnline).
+func (g *game) netStatusPath() string { return filepath.Join(g.logs, "online.status") }
 
 func (g *game) stop() {
 	g.mu.Lock()

@@ -516,6 +516,12 @@ function boot() {
     $("btn-leave-match").classList.toggle("hidden", !(g.running && g.online));
     refresh();
   });
+  // the game left the online session (nobody came to the menu, or the other player left): it goes on offline
+  rt().EventsOn("game_offline", () => {
+    $("btn-leave-match").classList.add("hidden");
+    note("La partida online terminó", "El juego sigue abierto, sin conexión.", "", null, 8);
+    refresh();
+  });
   rt().EventsOn("overlay", (on) => { $("overlay-banner").classList.toggle("hidden", !on); if (on) show("online"); });
   rt().EventsOn("match_countdown", (m) => {
     $("mm-me").textContent = st.me || "Tú";

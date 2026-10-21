@@ -475,6 +475,9 @@ func (a *App) checkGameUpdates() {
 		if err != nil || m.ID != p.ID {
 			continue
 		}
+		if _, ok := m.Packs[platformName]; !ok {
+			continue // no pack for this system (macOS: DBZ BT4 comes inside the app and is updated with it)
+		}
 		if cur := g.packVersion(); cur == "" || newerVersion(m.Version, cur) {
 			a.emit("update", map[string]any{"game": p.ID, "version": m.Version, "current": cur})
 		}

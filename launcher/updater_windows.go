@@ -4,8 +4,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
+
+// updateDownloadPath: the new exe is downloaded beside the running one.
+func updateDownloadPath(exe, file string) string { return exe + ".new" }
+
+// cleanupOldExe: the previous version, renamed aside by the last update.
+func cleanupOldExe() {
+	exe, err := executable()
+	if err != nil {
+		return
+	}
+	matches, _ := filepath.Glob(exe + ".old*")
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
+}
 
 // replaceExe: Windows lets a running exe be renamed, not overwritten: the running one moves aside (.old, removed at
 // the next start) and the new one takes its name.
@@ -23,7 +39,7 @@ func replaceExe(exe, next string) error {
 
 // relaunch starts the (new) launcher with the same arguments.
 func relaunch() error {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return err
 	}

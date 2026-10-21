@@ -687,6 +687,7 @@ function boot() {
     if (u.phase === "ready") note("Recomp " + u.version + " está lista", "Se usará la próxima vez que abras Recomp.", "good",
       [{ label: "Reiniciar ahora", cls: "blue", fn: async () => fail(await api().RestartForUpdate()) }], 30);
     else if (u.phase === "manual") note("Hay una versión nueva de Recomp", "Versión " + u.version + ": descárgala desde GitHub.", "", null, 20);
+    else if (u.error) note("No pude actualizar Recomp", u.error, "bad", null, 20);
   });
   rt().EventsOn("overlay", (on) => { $("overlay-banner").classList.toggle("hidden", !on); if (on) show("online"); });
   rt().EventsOn("match_countdown", (m) => {

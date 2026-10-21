@@ -6,13 +6,12 @@ package main
 //
 // At start (and every 6 hours while it runs) the launcher looks at the latest release; a newer version is
 // downloaded beside the running one, checked (SHA-256), and put in its place (updater_windows.go: the running exe is
-// renamed, which Windows allows, and the new one takes its name). The next start is the new version; the interface
-// offers to restart now when no game is open.
+// renamed, which Windows allows, and the new one takes its name; updater_darwin.go: the whole .app is swapped). The
+// next start is the new version; the interface offers to restart now when no game is open.
 
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -24,6 +23,9 @@ type launcherManifestT struct {
 	Version string              `json:"version"`
 	Files   map[string]packFile `json:"files"`
 }
+
+// executable: the running launcher (tests point it at a fake app).
+var executable = os.Executable
 
 // pendingUpdate: a newer launcher already in place, waiting for a restart ("" = none).
 var pendingUpdate string
@@ -83,12 +85,12 @@ func (a *App) checkLauncherUpdate() error {
 		a.emit("launcher_update", map[string]any{"version": m.Version, "phase": "manual"})
 		return nil
 	}
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return err
 	}
 	a.emit("launcher_update", map[string]any{"version": m.Version, "phase": "download"})
-	next := exe + ".new"
+	next := updateDownloadPath(exe, pf.File)
 	if err := download(furl, next, pf, nil); err != nil {
 		_ = os.Remove(next)
 		return err
@@ -100,18 +102,6 @@ func (a *App) checkLauncherUpdate() error {
 	pendingUpdate = m.Version
 	a.emit("launcher_update", map[string]any{"version": m.Version, "phase": "ready"})
 	return nil
-}
-
-// cleanupOldExe: the previous version, renamed aside by the last update.
-func cleanupOldExe() {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	matches, _ := filepath.Glob(exe + ".old*")
-	for _, m := range matches {
-		_ = os.Remove(m)
-	}
 }
 
 // RestartForUpdate: the interface's "Reiniciar" once an update is in place (not while a game runs).

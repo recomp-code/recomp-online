@@ -25,11 +25,13 @@ const platformName = "macOS"
 
 var qualityIni = []string{"dbz.ini", "dbz_4x.ini", "dbz_3x.ini", "dbz_metalfx.ini"}
 
+// GPU per frame in a 60 fps fight, M2 Pro, 3200x1800 window: 6x 13.5 ms, 4x 7.3 ms, 3x 5.8 ms, MetalFX (3x + upscale
+// to the window) 10.5 ms -- MetalFX is the second most expensive, not a light option.
 var qualityOptions = []QualityOption{
-	{"Máxima (6x)", "Para M Pro, Max o Ultra."},
-	{"Alta (4x)", "Un buen punto medio en un M Pro."},
-	{"Equilibrada (3x)", "Para cualquier Mac con chip M."},
-	{"Apple MetalFX (3x reescalado)", "Reescala a tu pantalla con MetalFX. Ligero en cualquier Mac."},
+	{"Máxima (6x)", "La imagen más nítida; pide mucha GPU: para M Max o Ultra."},
+	{"Alta (4x)", "Para M Pro."},
+	{"Equilibrada (3x)", "La más ligera: para cualquier Mac con chip M."},
+	{"Apple MetalFX (3x reescalado)", "3x reescalado a tu pantalla con MetalFX: más nítida que 3x, pero pide casi el doble de GPU."},
 }
 
 const fullscreenKey = "Option+Return (o Ctrl+Cmd+F)"
@@ -80,7 +82,8 @@ func (g *game) importOldSettings() {
 	_ = os.WriteFile(g.cfgPath, []byte(s), 0o644)
 }
 
-// defaultQuality by chip: 6x on Max/Ultra, 4x on Pro, MetalFX on the rest.
+// defaultQuality by chip: 6x on Max/Ultra, 4x on Pro, plain 3x on the rest (their GPU is the smallest; MetalFX costs
+// nearly twice the GPU of 3x).
 func (g *game) defaultQuality() int {
 	chip := gpuNames()
 	switch {
@@ -89,7 +92,7 @@ func (g *game) defaultQuality() int {
 	case strings.Contains(chip, "Pro"):
 		return 1
 	}
-	return 3
+	return 2
 }
 
 // setupRuntime: the writable runtime folder: data/ (from the ISO), savedata/ (memory card + settings), mods/, and

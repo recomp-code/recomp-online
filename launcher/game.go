@@ -391,6 +391,11 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		if m.CardDir != "" {
 			env = append(env, "PS2X_MC_ROOT="+m.CardDir)
 		}
+		// diagnostics: a hash interval given to the launcher itself (e.g. 1, every frame) wins over the default 60;
+		// both players must use the same one
+		if v := os.Getenv("PS2X_DETHASH"); v != "" {
+			env = append(env, "PS2X_DETHASH="+v)
+		}
 		_ = os.Remove(g.netStatusPath()) // a previous match's "offline" must not end this one
 		env = append(env, "PS2X_NET_STATUS_FILE="+g.netStatusPath())
 	}

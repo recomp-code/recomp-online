@@ -242,17 +242,24 @@ func (h *hub) lobbyJSON(game string) []byte {
 	return b
 }
 
-// lobbyMsg completes the shared part with the player's own friends: {...,"friends":[...]}.
+// lobbyMsg completes the shared part with the player's own friends and blocked players:
+// {...,"friends":[...],"blocked":[...]} (the launcher hides the blocked ones).
 func (h *hub) lobbyMsg(shared []byte, user string) []byte {
-	f := h.st.friends(user)
+	f, bl := h.st.friends(user), h.st.blocked(user)
 	if f == nil {
 		f = []string{}
 	}
+	if bl == nil {
+		bl = []string{}
+	}
 	fb, _ := json.Marshal(f)
-	out := make([]byte, 0, len(shared)+len(fb)+12)
+	bb, _ := json.Marshal(bl)
+	out := make([]byte, 0, len(shared)+len(fb)+len(bb)+24)
 	out = append(out, shared[:len(shared)-1]...)
 	out = append(out, `,"friends":`...)
 	out = append(out, fb...)
+	out = append(out, `,"blocked":`...)
+	out = append(out, bb...)
 	return append(out, '}')
 }
 
@@ -346,6 +353,8 @@ var (
 	errBusy       = errors.New("ese jugador está en una partida")
 	errYouBusy    = errors.New("ya estás en una partida")
 	errOtherBuild = errors.New("ese jugador tiene otra versión del juego: tienen que usar la misma")
+	// [block] the same answer whoever blocked whom: the blocked player is not told
+	errBlocked = errors.New("no puedes jugar con ese jugador")
 )
 
 func (h *hub) setWaiting(user string, on bool) {
@@ -386,6 +395,9 @@ func (h *hub) invite(from, to string, s settings) (*invite, error) {
 	}
 	if a.build != b.build {
 		return nil, errOtherBuild
+	}
+	if h.st.blockedEither(a.user, b.user) {
+		return nil, errBlocked
 	}
 	inv := &invite{ID: randomHex(8), From: a.user, To: b.user, Game: a.game, Settings: s, Expires: time.Now().Add(60 * time.Second)}
 	h.invites[inv.ID] = inv
@@ -579,6 +591,11 @@ func (h *hub) joinRoom(user, id, pass string) error {
 	if r.Build != c.build {
 		return errOtherBuild
 	}
+	for _, m := range r.Members {
+		if h.st.blockedEither(c.user, m) {
+			return errors.New("no puedes entrar en esa sala")
+		}
+	}
 	h.leaveRoomLocked(user)
 	r.Members = append(r.Members, c.user)
 	h.inRoom[lc(user)] = id
@@ -678,6 +695,9 @@ func (h *hub) chat(user, text string) error {
 		return errors.New("el chat es dentro de una sala")
 	}
 	for _, m := range r.Members {
+		if h.st.isBlocked(m, user) { // [block] it does not reach who blocked the sender
+			continue
+		}
 		h.sendLocked(m, map[string]any{"type": "chat", "from": user, "text": text})
 	}
 	return nil

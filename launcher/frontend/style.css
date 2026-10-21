@@ -311,3 +311,10 @@ body.pad .friend:focus { background: var(--row); }
   linear-gradient(160deg, #3a0b0b 0%, #160707 55%, #0e121a 100%); }
 .banner.br h1 { font-size: 54px; letter-spacing: .04em; text-shadow: 0 0 24px rgba(220,40,40,.45), 3px 3px 0 rgba(0,0,0,.5); }
 .banner.br .banner-lines { opacity: .12; }
+
+/* [block] */
+.blockbtn { background: none; border: 0; color: var(--faint); font-size: 14px; padding: 0 4px; cursor: pointer; }
+.blockbtn:hover, .blockbtn:focus { color: #ff7b6e; }
+.blocked { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.blocked .brow { display: flex; gap: 12px; align-items: center; }
+

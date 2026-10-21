@@ -35,6 +35,7 @@ type account struct {
 	Iter    int       `json:"iter"`
 	Created time.Time `json:"created"`
 	Friends []string  `json:"friends,omitempty"`
+	Blocked []string  `json:"blocked,omitempty"` // [block] players this one does not want to hear from
 }
 
 type session struct {
@@ -92,8 +93,12 @@ func writeJSON(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *store) saveUsersLocked() error    { return writeJSON(filepath.Join(s.dir, "users.json"), s.users) }
-func (s *store) saveSessionsLocked() error { return writeJSON(filepath.Join(s.dir, "sessions.json"), s.sessions) }
+func (s *store) saveUsersLocked() error {
+	return writeJSON(filepath.Join(s.dir, "users.json"), s.users)
+}
+func (s *store) saveSessionsLocked() error {
+	return writeJSON(filepath.Join(s.dir, "sessions.json"), s.sessions)
+}
 
 func randomHex(n int) string {
 	b := make([]byte, n)
@@ -264,6 +269,66 @@ func (s *store) friends(user string) []string {
 	return append([]string(nil), a.Friends...)
 }
 
+// [block] A blocked player cannot invite the one who blocked them, nor be invited by them, nor share a room with
+// them, and their room chat does not reach them; the blocker's launcher also hides them. Blocking someone also
+// takes them off the blocker's friends.
+func (s *store) blocked(user string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.users[strings.ToLower(user)]
+	if a == nil {
+		return nil
+	}
+	return append([]string(nil), a.Blocked...)
+}
+
+// isBlocked: user blocked other.
+func (s *store) isBlocked(user, other string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.users[strings.ToLower(user)]
+	if a == nil {
+		return false
+	}
+	for _, n := range a.Blocked {
+		if strings.EqualFold(n, other) {
+			return true
+		}
+	}
+	return false
+}
+
+// blockedEither: one of the two blocked the other.
+func (s *store) blockedEither(a, b string) bool { return s.isBlocked(a, b) || s.isBlocked(b, a) }
+
+func (s *store) setBlocked(user, other string, block bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.users[strings.ToLower(user)]
+	o, ok := s.users[strings.ToLower(other)]
+	if a == nil || !ok || strings.EqualFold(user, other) {
+		return errors.New("ese usuario no existe")
+	}
+	out := a.Blocked[:0]
+	for _, n := range a.Blocked {
+		if !strings.EqualFold(n, o.Name) {
+			out = append(out, n)
+		}
+	}
+	if block {
+		out = append(out, o.Name)
+		friends := a.Friends[:0]
+		for _, n := range a.Friends {
+			if !strings.EqualFold(n, o.Name) {
+				friends = append(friends, n)
+			}
+		}
+		a.Friends = friends
+	}
+	a.Blocked = out
+	return s.saveUsersLocked()
+}
+
 func (s *store) setFriend(user, friend string, add bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -271,6 +336,13 @@ func (s *store) setFriend(user, friend string, add bool) error {
 	f, ok := s.users[strings.ToLower(friend)]
 	if a == nil || !ok || strings.EqualFold(user, friend) {
 		return errors.New("ese usuario no existe")
+	}
+	if add {
+		for _, n := range a.Blocked {
+			if strings.EqualFold(n, f.Name) {
+				return errors.New("lo tienes bloqueado: desbloquéalo primero")
+			}
+		}
 	}
 	out := a.Friends[:0]
 	for _, n := range a.Friends {

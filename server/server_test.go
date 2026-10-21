@@ -344,6 +344,7 @@ func TestSessionsAtRestAreHashed(t *testing.T) {
 		t.Fatalf("session lost across restart")
 	}
 }
+
 // dialWS opens a live channel with an existing token (a reconnect).
 func dialWS(t *testing.T, base, token, game, build string) (*websocket.Conn, chan map[string]any) {
 	wsURL := "ws" + strings.TrimPrefix(base, "http") + "/api/ws?game=" + game + "&build=" + build
@@ -396,6 +397,7 @@ func TestReconnectGrace(t *testing.T) {
 	}
 	a.wait("match")
 }
+
 // search by nickname: every account, online or not, those starting with the text first; the lobby message
 // carries the player's own friends list.
 func TestPlayerSearch(t *testing.T) {
@@ -551,5 +553,99 @@ func TestStats(t *testing.T) {
 	}
 	if code, _ := post(t, base, "/api/stats", c.token, map[string]any{"game": "dbzbt4", "user": "nadie"}); code != 404 {
 		t.Fatalf("unknown player: %d", code)
+	}
+}
+
+// [block] A blocks B: neither can invite the other, B cannot join A's room, B's chat does not reach A, A's lobby
+// says who A blocked, and blocking takes B off A's friends. Unblocking restores invitations.
+func TestBlock(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Goku", "kamehameha", "dbzbt4", "b1")
+	b := newTClient(t, base, "Vegeta", "finalflash", "dbzbt4", "b1")
+	c := newTClient(t, base, "Krilin", "destructo1", "dbzbt4", "b1")
+	a.wait("hello")
+	b.wait("hello")
+	c.wait("hello")
+	if code, out := post(t, base, "/api/friends", a.token, map[string]any{"user": "vegeta", "add": true}); code != 200 {
+		t.Fatalf("friend: %d %v", code, out)
+	}
+	code, out := post(t, base, "/api/block", a.token, map[string]any{"user": "vegeta", "block": true})
+	fr, _ := out["friends"].([]any)
+	bl, _ := out["blocked"].([]any)
+	if code != 200 || len(fr) != 0 || len(bl) != 1 || bl[0] != "Vegeta" {
+		t.Fatalf("block: %d %v", code, out)
+	}
+	for {
+		ev := a.wait("lobby")
+		if bl, _ := ev["blocked"].([]any); len(bl) == 1 && bl[0] == "Vegeta" {
+			break
+		}
+	}
+	if code, out := post(t, base, "/api/invite", b.token, map[string]any{"to": "goku"}); code == 200 || out["error"] != errBlocked.Error() {
+		t.Fatalf("blocked player invited: %d %v", code, out)
+	}
+	if code, _ := post(t, base, "/api/invite", a.token, map[string]any{"to": "vegeta"}); code == 200 {
+		t.Fatal("invited a player one blocked")
+	}
+	if code, _ := post(t, base, "/api/friends", a.token, map[string]any{"user": "vegeta", "add": true}); code == 200 {
+		t.Fatal("befriended a blocked player")
+	}
+	// rooms: Vegeta cannot join Goku's room; in a room with Krilin and both, Goku does not get Vegeta's chat
+	_, rm := post(t, base, "/api/rooms", a.token, map[string]any{"name": "Sala", "max": 4})
+	if code, _ := post(t, base, "/api/rooms/join", b.token, map[string]any{"id": rm["id"]}); code == 200 {
+		t.Fatal("a blocked player joined the room")
+	}
+	post(t, base, "/api/rooms/leave", a.token, nil)
+	_, rm2 := post(t, base, "/api/rooms", c.token, map[string]any{"name": "Krilin", "max": 4})
+	if code, out := post(t, base, "/api/rooms/join", b.token, map[string]any{"id": rm2["id"]}); code != 200 {
+		t.Fatalf("join: %d %v", code, out)
+	}
+	if code, _ := post(t, base, "/api/rooms/join", a.token, map[string]any{"id": rm2["id"]}); code == 200 {
+		t.Fatal("joined a room where the blocked player is")
+	}
+	// search shows the flag
+	_, s := post(t, base, "/api/users/search", a.token, map[string]string{"q": "veg"})
+	if u := s["users"].([]any)[0].(map[string]any); u["blocked"] != true {
+		t.Fatalf("search: %v", u)
+	}
+	// unblock: invitations work again
+	post(t, base, "/api/block", a.token, map[string]any{"user": "vegeta", "block": false})
+	post(t, base, "/api/rooms/leave", b.token, nil)
+	if code, out := post(t, base, "/api/invite", b.token, map[string]any{"to": "goku"}); code != 200 {
+		t.Fatalf("invite after unblock: %d %v", code, out)
+	}
+	if a.wait("invite")["invite"].(map[string]any)["from"] != "Vegeta" {
+		t.Fatal("no invite after unblock")
+	}
+}
+
+func TestBlockedChatNotDelivered(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Gohan", "masenko12", "dbzbt4", "b1")
+	b := newTClient(t, base, "Piccolo", "makanko12", "dbzbt4", "b1")
+	c := newTClient(t, base, "Ten", "kikoho1234", "dbzbt4", "b1")
+	for _, x := range []*tclient{a, b, c} {
+		x.wait("hello")
+	}
+	_, rm := post(t, base, "/api/rooms", c.token, map[string]any{"name": "Chat", "max": 4})
+	for _, x := range []*tclient{a, b} {
+		if code, out := post(t, base, "/api/rooms/join", x.token, map[string]any{"id": rm["id"]}); code != 200 {
+			t.Fatalf("join %s: %d %v", x.user, code, out)
+		}
+	}
+	post(t, base, "/api/block", a.token, map[string]any{"user": "piccolo", "block": true})
+	post(t, base, "/api/chat", b.token, map[string]string{"text": "hola"})
+	post(t, base, "/api/chat", c.token, map[string]string{"text": "buenas"})
+	for {
+		ev := a.wait("chat")
+		if ev["from"] == "Piccolo" {
+			t.Fatal("chat from a blocked player delivered")
+		}
+		if ev["from"] == "Ten" {
+			break
+		}
+	}
+	if c.wait("chat")["from"] != "Piccolo" {
+		t.Fatal("the others lost the chat")
 	}
 }

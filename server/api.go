@@ -271,6 +271,24 @@ func (a *api) routes() http.Handler {
 		a.hub.friendsChanged(u)
 		writeJSONResp(w, 200, map[string]any{"friends": a.st.friends(u)})
 	}))
+
+	// [block] block or unblock a player (see store.setBlocked)
+	mux.HandleFunc("POST /api/block", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			User  string
+			Block bool
+		}
+		if err := readBody(r, &b); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		if err := a.st.setBlocked(u, b.User, b.Block); err != nil {
+			fail(w, 409, err)
+			return
+		}
+		a.hub.friendsChanged(u)
+		writeJSONResp(w, 200, map[string]any{"blocked": a.st.blocked(u), "friends": a.st.friends(u)})
+	}))
 	// [netcard] the memory card both games of a match boot from: player 1 uploads its own (raw bytes, the launcher's
 	// format), player 2 downloads it before starting. Same data on both machines = the same boot.
 	mux.HandleFunc("POST /api/match/card", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
@@ -317,14 +335,17 @@ func (a *api) routes() http.Handler {
 			fail(w, 429, errors.New("demasiadas búsquedas: espera un momento"))
 			return
 		}
-		friends := map[string]bool{}
+		friends, blocked := map[string]bool{}, map[string]bool{}
 		for _, f := range a.st.friends(u) {
 			friends[strings.ToLower(f)] = true
+		}
+		for _, f := range a.st.blocked(u) {
+			blocked[strings.ToLower(f)] = true
 		}
 		out := []map[string]any{}
 		for _, name := range a.st.search(q, 20) {
 			game, status := a.hub.whereIs(name)
-			out = append(out, map[string]any{"user": name, "friend": friends[strings.ToLower(name)], "game": game, "status": status})
+			out = append(out, map[string]any{"user": name, "friend": friends[strings.ToLower(name)], "blocked": blocked[strings.ToLower(name)], "game": game, "status": status})
 		}
 		writeJSONResp(w, 200, map[string]any{"users": out})
 	}))
@@ -501,6 +522,7 @@ func (l *connLimit) release(ip string) {
 	}
 	l.total--
 }
+
 // limiter: at most max attempts per key per minute (10 for logins, registrations, room passwords).
 type limiter struct {
 	mu   sync.Mutex
@@ -508,7 +530,7 @@ type limiter struct {
 	hits map[string][]time.Time
 }
 
-func newLimiter() *limiter        { return newLimiterN(10) }
+func newLimiter() *limiter       { return newLimiterN(10) }
 func newLimiterN(n int) *limiter { return &limiter{max: n, hits: map[string][]time.Time{}} }
 
 func (l *limiter) allow(key string) bool {

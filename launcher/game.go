@@ -445,6 +445,10 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if g.p.env != nil {
 		env = append(env, g.p.env(g, s, m)...)
 	}
+	// [invite] an invitation that arrives while playing is shown by the GS host over the game and answered with the pad
+	_ = os.Remove(g.invitePath())
+	_ = os.Remove(g.inviteAnswerPath())
+	env = append(env, "PS2X_INVITE_FILE="+g.invitePath(), "PS2X_INVITE_ANSWER="+g.inviteAnswerPath())
 	// [handover] every game can leave its window to the next one (handover), and the next one takes it over
 	_ = os.Remove(g.handoverPath())
 	env = append(env, "PS2X_LIVE_RING_FILE="+g.ringPath(), "PS2X_HANDOVER_FILE="+g.handoverPath())
@@ -511,6 +515,10 @@ func (g *game) netFightsPath() string { return filepath.Join(g.logs, "online.fig
 // started with PS2X_LIVE_ATTACH=<ring> and draws into the same window. For an online match accepted during an
 // offline game: the new game must boot from zero (both players' games have to be identical), but the player never
 // sees the window close.
+// [invite] the invitation for the GS host ("<id>\n<from>\n<line>") and its answer ("<id> accept|decline").
+func (g *game) invitePath() string       { return filepath.Join(g.logs, "invite.req") }
+func (g *game) inviteAnswerPath() string { return filepath.Join(g.logs, "invite.ans") }
+
 func (g *game) ringPath() string     { return filepath.Join(g.logs, "gshost.ring") }
 func (g *game) handoverPath() string { return filepath.Join(g.logs, "handover.req") }
 

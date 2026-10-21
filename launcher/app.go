@@ -13,7 +13,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const launcherVersion = "3.0"
+const launcherVersion = "3.1"
 
 // defaultServer is set at build time: -ldflags "-X main.defaultServer=https://online.tudominio.com"
 var defaultServer = "https://online.example.com"
@@ -413,8 +413,10 @@ func (a *App) onNetEvent(ev map[string]any) {
 			}
 			break
 		}
-		if a.game.running() { // the player is in a game: show the notice over it
-			a.showOverlay()
+		if a.game.running() { // the player is in a game: the GS host shows it over the game (or, failing that, the launcher)
+			if inv, ok := ev["invite"].(map[string]any); ok {
+				go a.inGameInvite(inv)
+			}
 		}
 	case "match":
 		mm, _ := ev["match"].(map[string]any)
@@ -527,6 +529,11 @@ func (a *App) Search(q string) map[string]any {
 	}
 	return map[string]any{"users": out.Users}
 }
+
+// Block: [block] block or unblock a player (server: no invitations either way, no shared room, no chat from them).
+func (a *App) Block(user string, block bool) string {
+	return errText(a.net.call("/api/block", map[string]any{"user": user, "block": block}, nil))
+}
 func (a *App) Friend(user string, add bool) string {
 	return errText(a.net.call("/api/friends", map[string]any{"user": user, "add": add}, nil))
 }
@@ -535,4 +542,49 @@ func (a *App) Quit() {
 		a.game.stop()
 	}
 	wruntime.Quit(a.ctx)
+}
+
+// inGameInvite: [invite] hands an invitation to the running game's GS host, which draws it over the game and takes the
+// pad's answer (pcsx2-gsrunner). If the host does not take it within 2 s (an older host, or the window is busy), the
+// launcher comes over the game as before. The answer goes to the server like the interface's buttons.
+func (a *App) inGameInvite(inv map[string]any) {
+	id, _ := inv["id"].(string)
+	from, _ := inv["from"].(string)
+	if id == "" || from == "" || strings.ContainsAny(id, "\r\n") {
+		return
+	}
+	g := a.game
+	line := "Si aceptas, empieza la partida online en esta ventana."
+	_ = os.Remove(g.inviteAnswerPath())
+	if os.WriteFile(g.invitePath(), []byte(id+"\n"+safeName(from)+"\n"+line+"\n"), 0o644) != nil {
+		a.showOverlay()
+		return
+	}
+	for i := 0; i < 20 && fileExists(g.invitePath()); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if fileExists(g.invitePath()) {
+		_ = os.Remove(g.invitePath())
+		a.showOverlay()
+		return
+	}
+	deadline := time.Now().Add(65 * time.Second)
+	for time.Now().Before(deadline) && g.running() {
+		time.Sleep(200 * time.Millisecond)
+		b, err := os.ReadFile(g.inviteAnswerPath())
+		if err != nil {
+			continue
+		}
+		_ = os.Remove(g.inviteAnswerPath())
+		f := strings.Fields(string(b))
+		if len(f) != 2 || f[0] != id {
+			continue
+		}
+		accept := f[1] == "accept"
+		a.emit("invite_answered", map[string]any{"id": id, "accept": accept})
+		if msg := a.Respond(id, accept); msg != "" {
+			a.emit("toast", map[string]any{"kind": "bad", "text": msg})
+		}
+		return
+	}
 }

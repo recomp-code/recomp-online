@@ -6,7 +6,7 @@ const api = () => window.go.main.App;
 const rt = () => window.runtime;
 const $ = (id) => document.getElementById(id);
 
-const st = { state: null, me: "", players: [], rooms: [], friends: [], room: null, invites: new Map(), connected: false };
+const st = { state: null, me: "", players: [], rooms: [], friends: [], blocked: [], room: null, invites: new Map(), connected: false };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -374,9 +374,46 @@ function searchRow(u) {
     }
   });
   star.title = u.friend ? "Quitar de amigos" : "Añadir a amigos";
-  act.appendChild(star);
+  if (!u.blocked) act.appendChild(star);
+  act.appendChild(u.blocked ? button("txtbtn", "Desbloquear", () => setBlocked(u.user, false, u)) : blockButton(u.user, u));
   r.appendChild(act);
   return r;
+}
+
+// [block] the button asks twice (a stray press on the pad must not block anybody)
+function blockButton(user, rec) {
+  let armed = 0;
+  const b = button("blockbtn", "⊘", () => {
+    if (Date.now() - armed > 4000) {
+      armed = Date.now();
+      b.textContent = "¿Bloquear?";
+      setTimeout(() => { if (Date.now() - armed >= 4000) b.textContent = "⊘"; }, 4100);
+      return;
+    }
+    setBlocked(user, true, rec);
+  });
+  b.title = "Bloquear a " + user;
+  return b;
+}
+async function setBlocked(user, block, rec) {
+  if (!fail(await api().Block(user, block))) return;
+  if (rec) rec.blocked = block;
+  if (block) { st.blocked = st.blocked.concat([user]); st.players = st.players.filter((p) => !same(p.user, user)); st.friends = st.friends.filter((f) => !same(f, user)); }
+  else st.blocked = st.blocked.filter((b) => !same(b, user));
+  note(block ? user + " bloqueado" : user + " desbloqueado", block ? "No podréis invitaros ni estar en la misma sala, y no verás su chat." : "Ya podéis volver a jugar.", block ? "" : "good", null, 6);
+  renderOnline();
+  renderBlocked();
+}
+function renderBlocked() {
+  const box = $("blocked-list");
+  box.replaceChildren();
+  if (!st.blocked.length) { box.appendChild(el("span", "dim", "Nadie.")); return; }
+  for (const name of st.blocked.slice().sort((a, b) => a.localeCompare(b))) {
+    const r = el("div", "brow");
+    r.appendChild(el("span", null, name));
+    r.appendChild(button("txtbtn", "Desbloquear", () => setBlocked(name, false)));
+    box.appendChild(r);
+  }
 }
 
 async function invite(p) {
@@ -422,6 +459,7 @@ function drawOnline() {
       star.title = p.friend ? "Quitar de amigos" : "Añadir a amigos";
       act.appendChild(star);
       if (!other && p.status !== "playing" && st.connected) act.appendChild(button("txtbtn", "Invitar", () => invite(p)));
+      act.appendChild(blockButton(p.user, p));
       r.appendChild(act);
     }
     pl.appendChild(fresh("players", p.user.toLowerCase(), r));
@@ -612,7 +650,10 @@ function onOnline(ev) {
     case "lobby": {
       // the server sends one list for everybody plus my friends; friends go first
       const fr = new Set((ev.friends || []).map((f) => f.toLowerCase()));
-      st.players = (ev.players || []).map((p) => Object.assign({}, p, { friend: fr.has(p.user.toLowerCase()) }));
+      // [block] the ones I blocked are not shown
+      st.blocked = ev.blocked || [];
+      const bl = new Set(st.blocked.map((b) => b.toLowerCase()));
+      st.players = (ev.players || []).filter((p) => !bl.has(p.user.toLowerCase())).map((p) => Object.assign({}, p, { friend: fr.has(p.user.toLowerCase()) }));
       st.players.sort((a, b) => (b.friend - a.friend) || a.user.toLowerCase().localeCompare(b.user.toLowerCase()));
       st.rooms = ev.rooms || [];
       st.friends = ev.friends || [];
@@ -654,6 +695,7 @@ function onOnline(ev) {
   }
   renderMe();
   renderOnline();
+  renderBlocked();
 }
 
 function boot() {
@@ -678,6 +720,8 @@ function boot() {
     note("La partida online terminó", "El juego sigue abierto, sin conexión.", "", null, 8);
     refresh();
   });
+  // [invite] answered in the game with the pad: the launcher's notice goes away
+  rt().EventsOn("invite_answered", (a) => { st.invites.delete(a.id); document.querySelectorAll('.note[data-invite="' + a.id + '"]').forEach((n) => n.remove()); renderOnline(); });
   rt().EventsOn("install", onInstall);
   // a newer version of a game was published: one click updates it (it keeps settings, saves and the ISO's files)
   rt().EventsOn("update", (u) => note("Hay una versión nueva de " + gameName(u.game), "Versión " + u.version + (u.current ? " (tienes la " + u.current + ")" : "") + ".", "",

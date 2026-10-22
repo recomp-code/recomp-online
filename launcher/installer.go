@@ -412,13 +412,18 @@ type CatalogEntry struct {
 	Installed bool   `json:"installed"`
 	Supported bool   `json:"supported"`
 	Version   string `json:"version"` // installed
+	InApp     bool   `json:"inApp"`   // comes inside the launcher and is updated with it (DBZ BT4 on macOS)
 }
 
 func (a *App) Catalog() []CatalogEntry {
 	var out []CatalogEntry
 	for _, p := range profiles {
 		g := a.games[p.ID]
-		out = append(out, CatalogEntry{ID: p.ID, Title: p.Title, Repo: p.Repo, Installed: g.installed(), Supported: p.supported(), Version: g.packVersion()})
+		e := CatalogEntry{ID: p.ID, Title: p.Title, Repo: p.Repo, Installed: g.installed(), Supported: p.supported(), Version: g.packVersion()}
+		if g.inApp() {
+			e.InApp, e.Version = true, launcherVersion
+		}
+		out = append(out, e)
 	}
 	return out
 }
@@ -446,6 +451,10 @@ func (a *App) AddGame(idOrRepo string) string {
 		return "este juego todavía no tiene versión para " + platformName
 	}
 	g := a.games[p.ID]
+	if g.inApp() { // its repo has no pack for this system: looking for an update means looking for a new launcher
+		go a.checkInAppUpdate(g)
+		return ""
+	}
 	go func() {
 		m, err := fetchManifest(p.Repo)
 		if err != nil {
@@ -459,6 +468,22 @@ func (a *App) AddGame(idOrRepo string) string {
 		a.installFrom(g, m)
 	}()
 	return ""
+}
+
+// checkInAppUpdate: "Buscar actualización" on a game inside the app. A new launcher shows its own notes
+// ("launcher_update"); otherwise the game is up to date ("current").
+func (a *App) checkInAppUpdate(g *game) {
+	if pendingUpdate != "" {
+		a.emit("launcher_update", map[string]any{"version": pendingUpdate, "phase": "ready"})
+		return
+	}
+	if err := a.checkLauncherUpdate(); err != nil {
+		a.emit("launcher_update", map[string]any{"error": err.Error()})
+		return
+	}
+	if pendingUpdate == "" {
+		a.emit("install", map[string]any{"game": g.p.ID, "phase": "current", "version": launcherVersion})
+	}
 }
 
 func (a *App) installFrom(g *game, m *gameManifest) {

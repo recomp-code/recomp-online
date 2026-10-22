@@ -34,6 +34,9 @@ func gamesRoot(launcherRoot string) string { return filepath.Join(launcherRoot, 
 
 // gameDir: where a game lives: games\<id>. An old DBZ BT4 zip has runtime\ next to the launcher: it is played from
 // there until the first update installs games\dbzbt4 (which keeps its settings, saves and ISO files).
+// inApp: no game comes inside the launcher on Windows (an old DBZ zip next to it is updated into games\\<id>).
+func (g *game) inApp() bool { return false }
+
 func gameDir(launcherRoot string, p *profile) string {
 	dir := filepath.Join(gamesRoot(launcherRoot), p.ID)
 	if p.ID == dbzProfile.ID && !fileExists(filepath.Join(dir, "runtime", "ps2EntryRunner.exe")) &&

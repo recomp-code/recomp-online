@@ -55,6 +55,9 @@ func gameDir(launcherRoot string, p *profile) string {
 	return filepath.Join(gamesRoot(launcherRoot), p.ID)
 }
 
+// inApp: DBZ BT4 comes inside the app and is updated with it (updater.go), never from its repo.
+func (g *game) inApp() bool { return g.p.ID == dbzProfile.ID }
+
 func (g *game) setPaths() {
 	if g.p.ID != dbzProfile.ID {
 		// a downloaded game: its folder exists once it is installed (installer.go), as on Windows

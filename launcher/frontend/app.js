@@ -233,7 +233,8 @@ async function openAdd() {
     const r = el("div", "r");
     const t = el("div", "r-txt");
     t.appendChild(el("span", "r-name", c.title));
-    t.appendChild(el("span", "r-sub", !c.supported ? "Todavía no para este sistema" : c.installed ? "Instalado" + (c.version ? " · versión " + c.version : "") : c.repo));
+    t.appendChild(el("span", "r-sub", !c.supported ? "Todavía no para este sistema" : c.inApp ? "Incluido en Recomp " + c.version + ": se actualiza con Recomp"
+      : c.installed ? "Instalado" + (c.version ? " · versión " + c.version : "") : c.repo));
     r.appendChild(t);
     if (c.supported) {
       const act = el("div", "act keep");
@@ -269,6 +270,9 @@ function onInstall(ev) {
     case "done":
       st.installing = null;
       note(name + " está listo", "Versión " + ev.version + ". Elige tu ISO y a jugar.", "good", null, 8);
+      break;
+    case "current":
+      note(name + " está al día", "Viene incluido en Recomp " + ev.version + " y se actualiza junto con Recomp.", "good", null, 8);
       break;
     case "error":
       st.installing = null;

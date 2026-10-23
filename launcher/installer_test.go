@@ -79,9 +79,14 @@ func fakeGitHub(t *testing.T, version string, pack []byte) *httptest.Server {
 	var ts *httptest.Server
 	ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/recomp-code/bloody-roar4-recomp/releases/latest":
-			json.NewEncoder(w).Encode(ghRelease{Tag: "v" + version, Assets: []ghAsset{
-				{Name: manifestName, URL: ts.URL + "/m"}, {Name: "BR4_Windows.zip", URL: ts.URL + "/pack"}}})
+		case "/repos/recomp-code/bloody-roar4-recomp/releases/latest": // a standalone release, newer, without a pack
+			json.NewEncoder(w).Encode(ghRelease{Tag: "v9.9", Assets: []ghAsset{{Name: "BR4-PC.zip", URL: ts.URL + "/x"}}})
+		case "/repos/recomp-code/bloody-roar4-recomp/releases":
+			json.NewEncoder(w).Encode([]ghRelease{
+				{Tag: "v9.9", Assets: []ghAsset{{Name: "BR4-PC.zip", URL: ts.URL + "/x"}}},
+				{Tag: "v9.8", Draft: true, Assets: []ghAsset{{Name: manifestName, URL: ts.URL + "/x"}}},
+				{Tag: "v" + version, Assets: []ghAsset{
+					{Name: manifestName, URL: ts.URL + "/m"}, {Name: "BR4_Windows.zip", URL: ts.URL + "/pack"}}}})
 		case "/m":
 			json.NewEncoder(w).Encode(gameManifest{ID: "br4", Version: version, Packs: map[string]packFile{
 				platformName: {File: "BR4_Windows.zip", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(pack))}}})

@@ -59,8 +59,10 @@ type ghAsset struct {
 }
 
 type ghRelease struct {
-	Tag    string    `json:"tag_name"`
-	Assets []ghAsset `json:"assets"`
+	Tag        string    `json:"tag_name"`
+	Draft      bool      `json:"draft"`
+	Prerelease bool      `json:"prerelease"`
+	Assets     []ghAsset `json:"assets"`
 }
 
 var (
@@ -120,9 +122,29 @@ func latestRelease(repo string) (*ghRelease, error) {
 	return &rel, nil
 }
 
-// fetchManifest: the game manifest of the repo's latest release, with this system's pack resolved to a URL.
+// gameRelease: the newest published release that carries a Recomp pack. A game repo may also publish releases of
+// its own (a standalone build) that have no manifest; "latest" alone would then hide the pack.
+func gameRelease(repo string) (*ghRelease, error) {
+	var rels []ghRelease
+	if err := getJSON(githubAPI()+"/repos/"+repo+"/releases?per_page=30", &rels); err != nil {
+		return nil, err
+	}
+	for i := range rels {
+		if rels[i].Draft || rels[i].Prerelease {
+			continue
+		}
+		for _, a := range rels[i].Assets {
+			if a.Name == manifestName {
+				return &rels[i], nil
+			}
+		}
+	}
+	return latestRelease(repo) // none carries one: fetchManifest reports it on the latest
+}
+
+// fetchManifest: the game manifest of the repo's newest Recomp release, with this system's pack resolved to a URL.
 func fetchManifest(repo string) (*gameManifest, error) {
-	rel, err := latestRelease(repo)
+	rel, err := gameRelease(repo)
 	if err != nil {
 		return nil, err
 	}

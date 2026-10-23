@@ -71,7 +71,7 @@ func (p *profile) opt(s Settings, key string) bool {
 
 func (p *profile) supported() bool { return len(p.qualities()) > 0 }
 
-var profiles = []*profile{dbzProfile, br4Profile}
+var profiles = []*profile{dbzProfile, br4Profile, nbaProfile}
 
 func profileByID(id string) *profile {
 	for _, p := range profiles {
@@ -199,6 +199,48 @@ var br4Profile = &profile{
 			env = append(env, "PS2X_DETERMINISTIC=1")
 		}
 		return env
+	},
+}
+
+// ---- NBA Street V3 (NTSC-U, SLUS-21126) ----
+
+// Online here is the game's own 2-player local match played by two machines in lockstep (the BR4 runtime's
+// deterministic mode, see street-recomp-v3's docs/ONLINE_LOCKSTEP.md): any court, the ballers on the match's memory
+// card. The EA-lobby online of the standalone NBA Street V3 PC release is a different mode and is not offered here
+// (its network adapter needs PS2X_NET, a name this mode must never set).
+var nbaProfile = &profile{
+	ID: "nbastreetv3", Title: "NBA Street V3", Short: "NBA Street V3", Banner: "nba", Sub: "EA Sports BIG (NTSC-U)",
+	Serial: "SLUS-21126", Elf: "SLUS_211.26", ElfSHA256: "D8ECAE84A16F8AFE930FB29AFF5CB4CA88C35D8C92A3F6A4FBB9219B692AA937",
+	BootName: "SLUS_211.26", CardPrefix: "BASLUS-", // the IOP modules and the game's archives are read from the ISO
+	Repo:       "recomp-code/street-recomp-v3",
+	ISOTitle:   "Elige la ISO de NBA Street V3 (NTSC-U, SLUS-21126)",
+	ISOMissing: "Necesitas tu ISO de NBA Street V3 (NTSC-U, SLUS-21126).",
+	Controls: "Mando de Xbox: A cruz, B círculo, X cuadrado, Y triángulo. Teclado: flechas, Z/X/C/V, Q/E = L1/R1, " +
+		"Enter = START. F1 abre las opciones gráficas. En línea, el rival es el jugador 2: en GAME ON elegid lado en " +
+		"USER SETUP y cada uno su equipo. Durante la partida, <b>Back + Start</b> (o Shift+Tab) abre esta ventana encima.",
+	Options: []GameOption{
+		{"widescreen", "Pantalla panorámica (16:9)", "Apagado: la imagen original 4:3.", true},
+	},
+	Qualities: map[string][]qualityPreset{
+		"Windows": {
+			{QualityOption{"Máxima (4x)", "4x interno, para gráficas potentes."}, "nba.ini", "vulkan", false},
+			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "nba_dlss.ini", "vulkan", false},
+		},
+	},
+	DLSSFolder:  true,
+	netProtocol: "nbanet1",
+	iniFor: func(pr *profile, p qualityPreset, s Settings) string {
+		if !pr.opt(s, "widescreen") {
+			return strings.TrimSuffix(p.Ini, ".ini") + "_4x3.ini"
+		}
+		return p.Ini
+	},
+	env: func(g *game, s Settings, m *netMatch) []string {
+		if m != nil {
+			// [netplay] as Bloody Roar 4: emulated time from the game's own work, the match's clock and memory card
+			return []string{"PS2X_DETERMINISTIC=1"}
+		}
+		return nil
 	},
 }
 

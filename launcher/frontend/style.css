@@ -311,6 +311,11 @@ body.pad .friend:focus { background: var(--row); }
   linear-gradient(160deg, #3a0b0b 0%, #160707 55%, #0e121a 100%); }
 .banner.br h1 { font-size: 54px; letter-spacing: .04em; text-shadow: 0 0 24px rgba(220,40,40,.45), 3px 3px 0 rgba(0,0,0,.5); }
 .banner.br .banner-lines { opacity: .12; }
+/* NBA Street V3: our own art too: a street court's orange evening */
+.banner.nba { height: 300px; background: radial-gradient(ellipse at 78% 18%, #f08a24 0%, rgba(240,138,36,0) 50%),
+  linear-gradient(150deg, #2b1a0e 0%, #4a2a12 40%, #12202e 100%); }
+.banner.nba h1 { font-size: 54px; letter-spacing: .02em; text-shadow: 0 0 22px rgba(240,138,36,.4), 3px 3px 0 rgba(0,0,0,.5); }
+.banner.nba .banner-lines { opacity: .1; }
 
 /* [block] */
 .blockbtn { background: none; border: 0; color: var(--faint); font-size: 14px; padding: 0 4px; cursor: pointer; }

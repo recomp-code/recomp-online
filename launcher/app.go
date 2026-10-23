@@ -13,7 +13,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const launcherVersion = "3.1.1"
+const launcherVersion = "3.2"
 
 // defaultServer is set at build time: -ldflags "-X main.defaultServer=https://online.tudominio.com"
 var defaultServer = "https://online.example.com"
@@ -308,7 +308,7 @@ func (a *App) setOverlay(on bool) {
 
 func (a *App) showOverlay() {
 	a.setOverlay(true)
-	wruntime.WindowShow(a.ctx)
+	a.toForeground() // restored before shown (app_windows.go)
 	launcherToFront()
 }
 
@@ -456,7 +456,11 @@ func (a *App) onNetEvent(ev map[string]any) {
 			if inGame {
 				a.toBackground()
 			} else {
-				wruntime.WindowShow(a.ctx)
+				// minimized, it stays so: the game's window opens on its own, and a WebView2 that was never shown (a
+				// launcher started minimized) fails its focus and go-webview2 ends the process
+				if !wruntime.WindowIsMinimised(a.ctx) {
+					a.toForeground()
+				}
 				a.emit("match_countdown", map[string]any{"opponent": mm["opponent"], "player": m.Player})
 			}
 			t0 := time.Now()

@@ -6,7 +6,7 @@ package main
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc -mmacosx-version-min=14.0
-#cgo LDFLAGS: -framework Cocoa -framework Carbon -framework GameController
+#cgo LDFLAGS: -framework Cocoa -framework Carbon -framework GameController -framework AVFoundation -framework CoreGraphics
 int rlInFront(void);
 void rlToFront(void);
 int rlFocusChildApp(int parent);
@@ -14,6 +14,9 @@ void rlWorkArea(int *w, int *h);
 int rlHotkeyStart(void);
 void rlHotkeyStop(void);
 unsigned rlPadButtons(void);
+int rlRightOptionDown(void);
+int rlMicAccess(void);
+void rlMicRequest(void);
 */
 import "C"
 
@@ -55,7 +58,8 @@ func workArea() (int, int) {
 
 func padButtons() uint16 { return uint16(C.rlPadButtons()) }
 
-// hotkey: Shift+Tab while the game runs (Carbon's RegisterEventHotKey: it reaches the launcher behind the game).
+// hotkey: Shift+Tab (hkOverlay) and Shift+M (hkMute) while the game runs (Carbon's RegisterEventHotKey: it reaches
+// the launcher behind the game).
 type hotkey struct {
 	mu sync.Mutex
 	on bool
@@ -63,20 +67,20 @@ type hotkey struct {
 
 var (
 	hotkeyMu sync.Mutex
-	hotkeyFn func()
+	hotkeyFn func(id int)
 )
 
 //export goHotkey
-func goHotkey() {
+func goHotkey(id C.int) {
 	hotkeyMu.Lock()
 	fn := hotkeyFn
 	hotkeyMu.Unlock()
 	if fn != nil {
-		go fn() // called on the main thread: the overlay itself needs it
+		go fn(int(id)) // called on the main thread: the overlay itself needs it
 	}
 }
 
-func (h *hotkey) start(fn func()) {
+func (h *hotkey) start(fn func(id int)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.on {
@@ -98,4 +102,36 @@ func (h *hotkey) stop() {
 	hotkeyMu.Lock()
 	hotkeyFn = nil
 	hotkeyMu.Unlock()
+}
+
+// [voice] push to talk: the right Option key, held
+const pttKeyName = "Opción derecha"
+
+func pttDown() bool { return C.rlRightOptionDown() != 0 }
+
+// [voice] the microphone permission: 0 not asked, 1 restricted, 2 denied, 3 allowed
+func micAccess() int { return int(C.rlMicAccess()) }
+
+var (
+	micMu   sync.Mutex
+	micDone func(bool)
+)
+
+// micRequest asks macOS (once: it remembers the answer) and calls done with it, on another goroutine.
+func micRequest(done func(bool)) {
+	micMu.Lock()
+	micDone = done
+	micMu.Unlock()
+	C.rlMicRequest()
+}
+
+//export goMicAnswer
+func goMicAnswer(granted C.int) {
+	micMu.Lock()
+	fn := micDone
+	micDone = nil
+	micMu.Unlock()
+	if fn != nil {
+		go fn(granted != 0)
+	}
 }

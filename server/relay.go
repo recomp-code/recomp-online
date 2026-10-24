@@ -8,11 +8,12 @@ package main
 // and the relay answers "RLYA" + player + ('1' when the other player is registered too, else '0').
 // From then on every datagram from a registered address is forwarded, untouched, to the other
 // player of the same match. The game's own packets (inputs, a few hundred bytes per second) are
-// opaque to the relay. Unknown senders are dropped.
+// opaque to the relay. Unknown senders are dropped. The voice chat goes through the same port (voice.go).
 
 import (
 	"log"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -23,7 +24,7 @@ const (
 	relayIdle      = 90 * time.Second // a match with no traffic for this long is over
 	relayMaxPacket = 1500
 	relayRebind    = 1500 * time.Millisecond // a registered slot only moves to a new address after this much silence
-	relayMaxRate   = 400             // packets per second per player (the game sends 30-60)
+	relayMaxRate   = 400                     // packets per second per player (the game sends 30-60)
 )
 
 type relayMatch struct {
@@ -44,6 +45,7 @@ type relay struct {
 	byAddr  map[string]*relayMatch // by "ip:port" of a registered player
 	slot    map[string]int         // "ip:port" -> player
 	packets uint64
+	voice   *voiceRelay // [voice]
 }
 
 func newRelay(listen string) (*relay, error) {
@@ -55,7 +57,8 @@ func newRelay(listen string) (*relay, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &relay{conn: c, matches: map[string]*relayMatch{}, byAddr: map[string]*relayMatch{}, slot: map[string]int{}}
+	r := &relay{conn: c, matches: map[string]*relayMatch{}, byAddr: map[string]*relayMatch{}, slot: map[string]int{},
+		voice: newVoiceRelay()}
 	go r.loop()
 	go r.reaper()
 	return r, nil
@@ -110,6 +113,10 @@ func (r *relay) loop() {
 			r.register(string(pkt[4:36]), pkt[36], from)
 			continue
 		}
+		if n == 36 && string(pkt[:4]) == voiceMagic {
+			r.voice.register(r.conn, string(pkt[4:36]), voiceAddr(from))
+			continue
+		}
 		key := from.String()
 		r.mu.Lock()
 		m := r.byAddr[key]
@@ -130,8 +137,16 @@ func (r *relay) loop() {
 		r.mu.Unlock()
 		if to != nil {
 			_, _ = r.conn.WriteToUDP(pkt, to)
+		} else if m == nil {
+			r.voice.handle(r.conn, pkt, voiceAddr(from)) // the match packets go first; then the voice
 		}
 	}
+}
+
+// voiceAddr: the sender as a map key, IPv4 unmapped (the port listens on both IPv4 and IPv6).
+func voiceAddr(a *net.UDPAddr) netip.AddrPort {
+	ap := a.AddrPort()
+	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
 }
 
 func (r *relay) register(token string, playerByte byte, from *net.UDPAddr) {

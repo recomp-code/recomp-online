@@ -24,6 +24,7 @@ type App struct {
 	game     *game            // the game selected in the launcher (the one Jugar starts and the lobby is for)
 	games    map[string]*game // every game the launcher knows, installed or not
 	net      *online
+	voice    *voiceChat // [voice]
 	hk       hotkey
 	pad      padWatch
 	mu       sync.Mutex
@@ -41,10 +42,14 @@ func NewApp(root string, direct bool) *App {
 	a.game = a.games[a.lastGame()]
 	a.net = newOnline(launcherHome(root), a.game.p.ID, a.game.build(), a.emit)
 	a.net.onEvent = a.onNetEvent
+	a.voice = newVoice(launcherHome(root), a.emit)
 	return a
 }
 
 func (a *App) emit(name string, data any) {
+	if ev, ok := data.(map[string]any); ok && name == "online" && (ev["type"] == "logged_out" || ev["type"] == "replaced") {
+		a.voice.leave() // [voice] signed out, or another launcher took this account: out of the channel
+	}
 	if a.ctx != nil {
 		wruntime.EventsEmit(a.ctx, name, data)
 	}
@@ -102,6 +107,7 @@ func (a *App) testInvite(user string) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.hk.stop()
+	a.voice.close()
 }
 
 // ---- the games ----
@@ -281,7 +287,13 @@ func (a *App) start(m *netMatch) string {
 	if m != nil {
 		go a.watchOnline(m)
 	}
-	a.hk.start(func() { a.toggleOverlay() })
+	a.hk.start(func(id int) {
+		if id == hkMute {
+			a.voice.toggleMute(true) // [voice] Shift+M: the microphone, with a beep (the launcher is not on screen)
+			return
+		}
+		a.toggleOverlay()
+	})
 	a.pad.start(func() { a.toggleOverlay() })
 	// the launcher stays on screen while the game boots (it says Shift+Tab brings it back), then goes to the
 	// taskbar: it never just vanishes
@@ -403,6 +415,7 @@ func (a *App) HideOverlay() {
 }
 
 func (a *App) onNetEvent(ev map[string]any) {
+	a.voice.onEvent(ev) // [voice]
 	switch ev["type"] {
 	case "invite":
 		if os.Getenv("RECOMP_TEST_ACCEPT") == "1" { // [test] see testInvite
@@ -540,6 +553,21 @@ func (a *App) Block(user string, block bool) string {
 }
 func (a *App) Friend(user string, add bool) string {
 	return errText(a.net.call("/api/friends", map[string]any{"user": user, "add": add}, nil))
+}
+
+// ---- [voice] the voice chat (voice.go) ----
+
+func (a *App) VoiceState() VoiceLive             { return a.voice.live() }
+func (a *App) VoiceSave(s VoiceSettings)         { a.voice.set(s) }
+func (a *App) VoiceToggleMute() bool             { return a.voice.toggleMute(false) }
+func (a *App) VoiceDevices() map[string][]string { return a.voice.devices() }
+
+// VoicePeer: my volume (percent) and mute for another player; remembered for the next time.
+func (a *App) VoicePeer(user string, volume int, muted bool) { a.voice.setPeer(user, volume, muted) }
+
+// RoomMute: the room's owner silences a player for everybody, or gives the voice back.
+func (a *App) RoomMute(user string, mute bool) string {
+	return errText(a.net.call("/api/rooms/mute", map[string]any{"user": user, "mute": mute}, nil))
 }
 func (a *App) Quit() {
 	if a.game.running() {

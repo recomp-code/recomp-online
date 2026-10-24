@@ -90,11 +90,44 @@ más su `SHA256SUMS`.
 | POST | `/api/status` | `{waiting}` buscar partida |
 | POST | `/api/invite`, `/api/invite/respond` | invitar, aceptar o rechazar |
 | POST | `/api/rooms`, `/api/rooms/join`, `/leave`, `/start`, `/kick` | salas |
+| POST | `/api/rooms/mute` | `{user, mute}` el creador silencia a alguien para toda la sala (chat de voz) |
 | POST | `/api/chat` | mensaje a la sala |
 | POST | `/api/match/end` | fin de la partida (la sala pasa al siguiente turno) |
 | POST | `/api/friends` | `{user, add}` |
 
 Todas las rutas salvo `health`, `register` y `login` piden `Authorization: Bearer <token>`.
+
+### Chat de voz
+
+La voz va por el mismo puerto UDP del relay, desde un socket del launcher (nunca el del juego). Un canal es una
+**sala** (hasta 4: los dos que pelean y los que esperan turno siguen hablando entre peleas y con la rotación) o la
+partida 1 contra 1 de una invitación (se cierra con la partida).
+
+- Al entrar en la sala (o empezar la partida de una invitación) el WebSocket manda a cada jugador, solo a él,
+  `{"type":"voice","channel","relay","slot":1-4,"token"}`; al volver a conectarse recibe el mismo sitio y token.
+  `room.voice` (`{usuario: slot}`) y `room.muted` dicen quién es quién; en la partida de una invitación, `match.voice`.
+  Al salir llega `voice_end`.
+- UDP: `"RLV1" + token` registra (respuesta `"RLVA" + slot`; se repite cada pocos segundos para mantener abierto el
+  NAT en silencio). `'v' + slot + datos`: voz; el relay escribe el slot de quien la manda (no se fía del que traiga)
+  y la copia a los demás del canal sin decodificarla. `'p' + datos`: ping, vuelve igual a quien lo manda.
+- Quién oye a quién se calcula cuando cambia (entradas, salidas, bloqueos, silencio del creador): entre dos jugadores
+  con un bloqueo de por medio no pasa la voz en ningún sentido. Máximo 250 datagramas por segundo por jugador.
+- Lo que añade el relay (`go test -run VoiceRelayLatency -v`, 4 hablando a la vez a 100 datagramas/s): p50 ~0.26 ms,
+  p99 ~0.6 ms en local; ~10 µs de CPU por datagrama recibido con sus 3 envíos, sin reservas de memoria.
+
+En el launcher (`launcher/voice/`) la voz es un motor en C, para que el audio nunca espere al recolector de Go: 48 kHz
+mono en tramos de 10 ms, Opus (VOIP, con FEC dentro del paquete), un buffer de jitter por jugador que se adapta solo
+(20 ms en una red limpia, 80 ms como mucho), relleno de huecos, control de la deriva de reloj entre tarjetas de sonido y
+una puerta de ruido por mínimos estadísticos (un ventilador constante no la abre; la voz por encima sí). Silencio = no
+se manda nada. En macOS va compilado dentro del launcher (cgo); en Windows es una DLL metida en `Recomp.exe`
+(`recompvoice_windows_amd64.dll`, se carga sin cgo). `launcher/voice/build.sh` rehace Opus y la DLL desde un Mac (zig).
+
+- Micrófono: se abre al hablar o mientras se mantiene Alt derecho / Opción derecha. Silenciado, el micrófono ni se
+  abre. Durante la partida Shift+M lo cierra o lo abre (con un tono). Cada jugador: volumen y silencio propios.
+- macOS: cancelación de eco opcional (la unidad de voz de Apple, para quien juega con las bocinas).
+- Pruebas: `launcher/voice/test/e2e.c` (4 motores por un relay con pérdidas y jitter: latencia, huecos, mezcla,
+  silencios, puerta, deriva), `test/devices.c` (los altavoces de verdad) y `RECOMP_VOICE_E2E=1 go test -run
+  VoiceServer` en `launcher/` (el launcher contra este servidor).
 
 ## Licencia
 

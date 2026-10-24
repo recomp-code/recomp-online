@@ -57,8 +57,13 @@
     if (e.tagName === "INPUT" && e.type !== "checkbox") return; // text: the keyboard writes there
     e.click();
   }
-  function step(d) { // left/right on a list changes its value
+  function step(d) { // left/right on a list or a slider changes its value
     const e = document.activeElement;
+    if (e && e.tagName === "INPUT" && e.type === "range") {
+      const v = Math.min(+e.max, Math.max(+e.min, +e.value + d * (+e.step || 1)));
+      if (v !== +e.value) { e.value = v; e.dispatchEvent(new Event("input")); e.dispatchEvent(new Event("change")); }
+      return true;
+    }
     if (!e || e.tagName !== "SELECT") return false;
     const i = Math.min(e.options.length - 1, Math.max(0, e.selectedIndex + d));
     if (i !== e.selectedIndex) { e.selectedIndex = i; e.dispatchEvent(new Event("change")); }

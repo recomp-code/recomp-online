@@ -28,6 +28,7 @@ var (
 	procUnregisterHotKey        = modUser32.NewProc("UnregisterHotKey")
 	procGetMessageW             = modUser32.NewProc("GetMessageW")
 	procPostThreadMessageW      = modUser32.NewProc("PostThreadMessageW")
+	procGetAsyncKeyState        = modUser32.NewProc("GetAsyncKeyState")
 	procFindWindowExW           = modUser32.NewProc("FindWindowExW")
 	procGetWindowThreadProcId   = modUser32.NewProc("GetWindowThreadProcessId")
 	procSetForegroundWindow     = modUser32.NewProc("SetForegroundWindow")
@@ -253,11 +254,14 @@ const (
 	wmHotkey   = 0x0312
 	wmQuit     = 0x0012
 	hotkeyID   = 0xB71
+	hotkeyMute = 0xB72 // [voice] Shift+M: the microphone
+	vkM        = 0x4D
+	vkRMenu    = 0xA5 // right Alt (AltGr): push to talk
 )
 
-// start registers Shift+Tab and calls fn on every press, from its own OS thread (RegisterHotKey's messages go to
-// the registering thread's queue).
-func (h *hotkey) start(fn func()) {
+// start registers Shift+Tab (hkOverlay) and Shift+M (hkMute) and calls fn with which on every press, from its own OS
+// thread (RegisterHotKey's messages go to the registering thread's queue).
+func (h *hotkey) start(fn func(id int)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.threadID != 0 {
@@ -274,6 +278,9 @@ func (h *hotkey) start(fn func()) {
 			return
 		}
 		defer procUnregisterHotKey.Call(0, hotkeyID)
+		if ok, _, _ := procRegisterHotKey.Call(0, hotkeyMute, modShift|modNoRep, vkM); ok != 0 {
+			defer procUnregisterHotKey.Call(0, hotkeyMute)
+		}
 		var msg struct {
 			Hwnd    uintptr
 			Message uint32
@@ -288,7 +295,9 @@ func (h *hotkey) start(fn func()) {
 				return
 			}
 			if msg.Message == wmHotkey && msg.WParam == hotkeyID {
-				fn()
+				fn(hkOverlay)
+			} else if msg.Message == wmHotkey && msg.WParam == hotkeyMute {
+				fn(hkMute)
 			}
 		}
 	}()
@@ -303,3 +312,15 @@ func (h *hotkey) stop() {
 		h.threadID = 0
 	}
 }
+
+// [voice] push to talk: the right Alt (AltGr) key, held. Its state is read, not hooked: the game still gets it.
+const pttKeyName = "Alt derecho (AltGr)"
+
+func pttDown() bool {
+	r, _, _ := procGetAsyncKeyState.Call(vkRMenu)
+	return r&0x8000 != 0
+}
+
+// [voice] Windows asks for the microphone itself (Settings > Privacy): nothing to request here.
+func micAccess() int             { return 3 }
+func micRequest(done func(bool)) { done(true) }

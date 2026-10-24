@@ -56,16 +56,18 @@ type invite struct {
 }
 
 type room struct {
-	ID       string   `json:"id"`
-	Game     string   `json:"game"`
-	Name     string   `json:"name"`
-	Owner    string   `json:"owner"`
-	Locked   bool     `json:"locked"`
-	Max      int      `json:"max"`
-	Members  []string `json:"members"` // queue order: the first two play the next match
-	Settings settings `json:"settings"`
-	Build    string   `json:"build"`
-	Match    string   `json:"match,omitempty"`
+	ID       string         `json:"id"`
+	Game     string         `json:"game"`
+	Name     string         `json:"name"`
+	Owner    string         `json:"owner"`
+	Locked   bool           `json:"locked"`
+	Max      int            `json:"max"`
+	Members  []string       `json:"members"` // queue order: the first two play the next match
+	Settings settings       `json:"settings"`
+	Build    string         `json:"build"`
+	Match    string         `json:"match,omitempty"`
+	Voice    map[string]int `json:"voice"`           // [voice] user -> place in the room's voice channel
+	Muted    []string       `json:"muted,omitempty"` // [voice] silenced for everybody by the owner
 	passSalt string
 	passHash string
 }
@@ -79,7 +81,8 @@ type match struct {
 	Settings settings  `json:"settings"`
 	Started  time.Time `json:"started"`
 	token    string
-	card     []byte // [netcard] player 1's memory card for this match (both games boot from it); in memory only
+	voice    map[string]int // [voice] user -> place in the match's own channel (an invitation's match; nil in a room)
+	card     []byte         // [netcard] player 1's memory card for this match (both games boot from it); in memory only
 }
 
 // maxCard: a BT4 save is 16 KB plus its icon; anything near this is not a memory card.
@@ -275,22 +278,27 @@ func (h *hub) attach(user, game, build string) *client {
 	c := &client{user: user, game: game, build: build, ch: make(chan []byte, 64), since: time.Now()}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if old := h.clients[lc(user)]; old != nil && !old.gone {
+	old := h.clients[lc(user)]
+	h.clients[lc(user)] = c // first: what follows goes to the new stream (sending on the old one's closed channel panicked)
+	h.sendLocked(user, map[string]any{"type": "hello", "user": user, "game": game})
+	if old != nil && !old.gone {
 		close(old.ch) // the same account opened a new launcher: the old stream ends
 		if old.game != game {
 			h.leaveRoomLocked(user)
 			h.broadcastLocked(old.game)
 		}
 	}
-	h.clients[lc(user)] = c
-	h.sendLocked(user, map[string]any{"type": "hello", "user": user, "game": game})
 	if rid, ok := h.inRoom[lc(user)]; ok {
 		if r := h.rooms[rid]; r != nil {
 			h.sendLocked(user, map[string]any{"type": "room", "room": r})
+			h.voiceJoinLocked(roomVoice(r.ID), user) // [voice] the same place and token as before
 		}
 	}
 	if mid, ok := h.playing[lc(user)]; ok { // back during a match: it is still on (the relay never depended on this channel)
 		h.sendLocked(user, map[string]any{"type": "playing", "id": mid})
+		if m := h.matches[mid]; m != nil && m.voice != nil {
+			h.voiceJoinLocked(matchVoice(m.ID), user)
+		}
 	}
 	for _, inv := range h.invites { // invitations that arrived while the connection was down
 		if strings.EqualFold(inv.To, user) {
@@ -454,6 +462,13 @@ func (h *hub) startMatchLocked(game, p1, p2, roomID string, s settings) *match {
 	delete(h.waiting, lc(p1))
 	delete(h.waiting, lc(p2))
 	h.rl.open(m.token, func(token, why string) { h.endMatch(m.ID, why) })
+	if roomID == "" { // [voice] a room's players already talk in the room
+		m.voice = map[string]int{}
+		for _, u := range []string{p1, p2} {
+			m.voice[u] = h.voiceJoinLocked(matchVoice(m.ID), u)
+		}
+		h.voiceRoutesLocked(matchVoice(m.ID), m.voice, nil)
+	}
 	if h.stats != nil {
 		h.stats.matchStarted(m.ID, game, p1, p2)
 	}
@@ -464,7 +479,7 @@ func (h *hub) startMatchLocked(game, p1, p2, roomID string, s settings) *match {
 		}
 		h.sendLocked(u, map[string]any{"type": "match", "match": map[string]any{
 			"id": m.ID, "token": m.token, "relay": h.relayAddr, "player": i + 1, "opponent": other,
-			"room": roomID, "settings": s}})
+			"room": roomID, "settings": s, "voice": m.voice}})
 	}
 	if r := h.rooms[roomID]; r != nil {
 		r.Match = m.ID
@@ -484,9 +499,15 @@ func (h *hub) endMatch(id, why string) {
 		return
 	}
 	delete(h.matches, id)
+	if m.voice != nil {
+		h.rl.voice.close(matchVoice(id))
+	}
 	for _, u := range []string{m.P1, m.P2} {
 		if h.playing[lc(u)] == id {
 			delete(h.playing, lc(u))
+		}
+		if m.voice != nil {
+			h.sendLocked(u, map[string]any{"type": "voice_end", "channel": matchVoice(id)})
 		}
 		h.sendLocked(u, map[string]any{"type": "match_end", "id": id, "why": why})
 	}
@@ -552,7 +573,8 @@ func (h *hub) createRoom(user, name, pass string, max int, s settings) (*room, e
 		return nil, errYouBusy
 	}
 	h.leaveRoomLocked(user)
-	r := &room{ID: randomHex(6), Game: c.game, Name: name, Owner: c.user, Max: max, Members: []string{c.user}, Settings: s, Build: c.build}
+	r := &room{ID: randomHex(6), Game: c.game, Name: name, Owner: c.user, Max: max, Members: []string{c.user}, Settings: s, Build: c.build,
+		Voice: map[string]int{}}
 	if pass != "" {
 		r.Locked, r.passSalt = true, randomHex(8)
 		r.passHash = roomPassHash(r.passSalt, pass)
@@ -560,6 +582,7 @@ func (h *hub) createRoom(user, name, pass string, max int, s settings) (*room, e
 	h.rooms[r.ID] = r
 	h.inRoom[lc(user)] = r.ID
 	delete(h.waiting, lc(user))
+	h.roomVoiceJoinLocked(r, c.user)
 	h.sendRoomLocked(r)
 	h.broadcastLocked(c.game)
 	return r, nil
@@ -600,6 +623,7 @@ func (h *hub) joinRoom(user, id, pass string) error {
 	r.Members = append(r.Members, c.user)
 	h.inRoom[lc(user)] = id
 	delete(h.waiting, lc(user))
+	h.roomVoiceJoinLocked(r, c.user)
 	h.sendRoomLocked(r)
 	h.broadcastLocked(c.game)
 	return nil
@@ -622,11 +646,22 @@ func (h *hub) leaveRoomLocked(user string) {
 		}
 	}
 	r.Members = out
+	// [voice] out of the channel at once: their datagrams are dropped from now on
+	h.rl.voice.leave(roomVoice(id), user)
+	for u := range r.Voice {
+		if strings.EqualFold(u, user) {
+			delete(r.Voice, u)
+		}
+	}
+	r.Muted = without(r.Muted, user)
+	h.sendLocked(user, map[string]any{"type": "voice_end", "channel": roomVoice(id)})
 	h.sendLocked(user, map[string]any{"type": "room_left", "id": id})
 	if len(r.Members) == 0 {
+		h.rl.voice.close(roomVoice(id))
 		delete(h.rooms, id)
 		return
 	}
+	h.voiceRoutesLocked(roomVoice(id), r.Voice, r.Muted)
 	if strings.EqualFold(r.Owner, user) {
 		r.Owner = r.Members[0]
 	}
@@ -715,4 +750,103 @@ func (h *hub) counts() (int, int, int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.clients), len(h.rooms), len(h.matches)
+}
+
+// ---- voice ------------------------------------------------------------------------------
+
+// [voice] The channels' names on the relay: a room's (it outlives its matches) and an invitation's match.
+func roomVoice(id string) string  { return "r:" + id }
+func matchVoice(id string) string { return "m:" + id }
+
+// voiceJoinLocked: the player's place in a voice channel and their own token, sent to them only (the others never
+// see it). Joining again (a reconnect) gives the same place and token.
+func (h *hub) voiceJoinLocked(ch, user string) int {
+	slot, token := h.rl.voice.join(ch, user)
+	if slot != 0 {
+		h.sendLocked(user, map[string]any{"type": "voice", "channel": ch, "relay": h.relayAddr, "slot": slot, "token": token})
+	}
+	return slot
+}
+
+func (h *hub) roomVoiceJoinLocked(r *room, user string) {
+	if slot := h.voiceJoinLocked(roomVoice(r.ID), user); slot != 0 {
+		r.Voice[user] = slot
+	}
+	h.voiceRoutesLocked(roomVoice(r.ID), r.Voice, r.Muted)
+}
+
+// voiceRoutesLocked: who hears whom, worked out whenever it changes (someone joins or leaves, a block, the owner's
+// mute) so the relay only tests a bit per datagram. Nobody hears a player muted by the owner, and two players where
+// one blocked the other do not hear each other ([block]: unlike the chat, the voice is cut both ways).
+func (h *hub) voiceRoutesLocked(ch string, members map[string]int, muted []string) {
+	var to [voiceSlots + 1]uint8
+	for su, s := range members {
+		if containsFold(muted, su) {
+			continue
+		}
+		for ru, r := range members {
+			if r != s && !h.st.blockedEither(su, ru) {
+				to[s] |= 1 << (r - 1)
+			}
+		}
+	}
+	h.rl.voice.setRoutes(ch, to)
+}
+
+// blocksChanged: a block or an unblock cuts or gives back the voice at once in the player's room or match.
+func (h *hub) blocksChanged(user string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if r := h.rooms[h.inRoom[lc(user)]]; r != nil {
+		h.voiceRoutesLocked(roomVoice(r.ID), r.Voice, r.Muted)
+	}
+	if m := h.matches[h.playing[lc(user)]]; m != nil && m.voice != nil {
+		h.voiceRoutesLocked(matchVoice(m.ID), m.voice, nil)
+	}
+}
+
+// muteInRoom: the room's owner silences a player for everybody (a microphone left open, an echo) or gives the voice
+// back. Everybody sees it in the room's "muted" list.
+func (h *hub) muteInRoom(owner, user string, mute bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.rooms[h.inRoom[lc(owner)]]
+	if r == nil || !strings.EqualFold(r.Owner, owner) {
+		return errors.New("solo el creador de la sala puede silenciar a alguien")
+	}
+	name := ""
+	for _, m := range r.Members {
+		if strings.EqualFold(m, user) {
+			name = m
+		}
+	}
+	if name == "" {
+		return errors.New("ese jugador no está en tu sala")
+	}
+	r.Muted = without(r.Muted, name)
+	if mute {
+		r.Muted = append(r.Muted, name)
+	}
+	h.voiceRoutesLocked(roomVoice(r.ID), r.Voice, r.Muted)
+	h.sendRoomLocked(r)
+	return nil
+}
+
+func containsFold(list []string, s string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func without(list []string, s string) []string {
+	var out []string
+	for _, x := range list {
+		if !strings.EqualFold(x, s) {
+			out = append(out, x)
+		}
+	}
+	return out
 }

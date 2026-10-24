@@ -30,6 +30,7 @@ function show(view) {
     s.classList.toggle("hidden", v !== view);
     if (v === view && !was) { s.classList.remove("enter"); void s.offsetWidth; s.classList.add("enter"); }
   }
+  if (view === "settings") voiceSettingsShown();
 }
 
 // rows that were not there in the previous render slide in; the rest are redrawn still
@@ -513,7 +514,9 @@ function drawOnline() {
   room.members.forEach((m, i) => {
     const row = el("div", "q" + (i < 2 ? " next" : ""));
     row.appendChild(el("span", "num", String(i + 1)));
-    row.appendChild(pic(m, "online"));
+    const pc = pic(m, "online");
+    pc.dataset.voiceUser = m.toLowerCase(); // [voice] lights up while they talk
+    row.appendChild(pc);
     const t = el("div", "r-txt");
     const nm = el("span", "r-name", m);
     if (same(m, room.owner)) nm.appendChild(el("span", "owner", "anfitrión"));
@@ -524,6 +527,7 @@ function drawOnline() {
     q.appendChild(fresh("queue", m.toLowerCase(), row));
   });
   drawn("queue");
+  talkingLights();
   const sb = $("btn-start");
   sb.classList.toggle("hidden", !owner);
   sb.disabled = !!room.match || room.members.length < 2;
@@ -643,6 +647,133 @@ function chatLine(from, text) {
   log.scrollTop = log.scrollHeight;
 }
 
+// ---------------- [voice] the voice chat ----------------
+const vc = { s: null, peopleKey: "" };
+
+function onVoice(v) {
+  vc.s = v;
+  const active = !!v.channel;
+  $("voice-bar").classList.toggle("hidden", !active);
+  $("lobby").classList.toggle("with-voice", active);
+  const mic = $("v-mic");
+  mic.classList.toggle("off", v.muted);
+  mic.classList.toggle("live", v.sending && !v.muted);
+  $("v-mic-text").textContent = v.muted ? "Micrófono cerrado" : v.ptt ? "Mantén " + v.pttKey : "Micrófono abierto";
+  for (const id of ["v-level", "v-level2"]) {
+    const i = $(id);
+    i.style.width = (v.muted ? 0 : v.level) + "%";
+    i.classList.toggle("on", v.sending && !v.muted);
+  }
+  let s = "Conectando la voz…";
+  if (!v.enabled) s = "Chat de voz desactivado (en Ajustes)";
+  else if (!v.on) s = v.error ? "" : "Voz desconectada";
+  else if (v.state === 2) s = "Voz conectada" + (v.ping >= 0 ? " · " + v.ping + " ms al servidor" : "");
+  else if (v.state < 0) s = "La voz falló";
+  if (v.silent) s = "El anfitrión te silenció en la sala";
+  $("v-status").textContent = s;
+  $("v-err").textContent = v.error || "";
+  drawVoicePeople(v);
+  talkingLights();
+  if (!$("v-settings").classList.contains("hidden")) voiceFormHints();
+}
+
+// the others of the channel: rebuilt only when who is there (or my choices for them) changed; 10 times a second
+// only their light and latency move
+function drawVoicePeople(v) {
+  const box = $("v-people");
+  const owner = !!(st.room && same(st.room.owner, st.me));
+  const key = JSON.stringify([owner, v.players.map((p) => [p.user, p.muted, p.volume, p.silent])]);
+  if (key !== vc.peopleKey) {
+    vc.peopleKey = key;
+    keepFocus(() => {
+      box.replaceChildren();
+      if (!v.players.length) box.appendChild(el("span", "none", "Nadie más en la voz todavía"));
+      for (const p of v.players.slice().sort((a, b) => a.slot - b.slot)) {
+        const c = el("div", "vp" + (p.muted ? " muted" : ""));
+        c.dataset.k = "voice:" + p.user.toLowerCase();
+        c.dataset.user = p.user.toLowerCase();
+        c.append(el("i", "vp-dot"), el("span", "vp-name", p.user), el("span", "vp-ms", ""));
+        c.appendChild(button("txtbtn", p.muted ? "Oír" : "Silenciar", () => api().VoicePeer(p.user, p.volume, !p.muted)));
+        const vol = el("input");
+        vol.type = "range"; vol.min = "0"; vol.max = "200"; vol.step = "10"; vol.value = String(p.volume);
+        vol.title = "Volumen de " + p.user;
+        vol.addEventListener("change", () => api().VoicePeer(p.user, +vol.value, p.muted));
+        c.appendChild(vol);
+        if (owner) c.appendChild(button("txtbtn", p.silent ? "Devolverle la voz" : "Silenciar en la sala", async () => fail(await api().RoomMute(p.user, !p.silent))));
+        else if (p.silent) c.appendChild(el("span", "vp-tag", "silenciado por el anfitrión"));
+        box.appendChild(c);
+      }
+    });
+  }
+  for (const p of v.players) {
+    const c = box.querySelector('.vp[data-user="' + CSS.escape(p.user.toLowerCase()) + '"]');
+    if (!c) continue;
+    c.classList.toggle("talking", p.talking && !p.muted);
+    const ms = c.querySelector(".vp-ms");
+    ms.textContent = p.ms >= 0 ? p.ms + " ms" : "";
+    ms.title = p.ms >= 0 ? "de su boca a tu oído (estimado)" + (p.loss > 50 ? "; pierde paquetes: se rellenan" : "") : "";
+    ms.classList.toggle("bad", p.ms > 250 || p.loss > 100);
+  }
+}
+
+// the avatars of the room's queue glow while that player talks (me too, while my voice goes out)
+function talkingLights() {
+  const v = vc.s;
+  document.querySelectorAll("[data-voice-user]").forEach((e) => {
+    const p = v && v.players.find((x) => same(x.user, e.dataset.voiceUser));
+    e.classList.toggle("talking", !!v && (!!(p && p.talking && !p.muted) || (same(e.dataset.voiceUser, st.me) && v.sending && !v.muted)));
+  });
+}
+
+$("v-mic").addEventListener("click", () => api().VoiceToggleMute());
+
+// Ajustes > Chat de voz
+function fillDevices(sel, list, cur) {
+  sel.replaceChildren();
+  const def = el("option", "", "La del sistema");
+  def.value = "";
+  sel.appendChild(def);
+  for (const n of list || []) { const o = el("option", "", n); o.value = n; sel.appendChild(o); }
+  if (cur && !(list || []).includes(cur)) { const o = el("option", "", cur + " (no conectado)"); o.value = cur; sel.appendChild(o); }
+  sel.value = cur || "";
+}
+async function voiceSettingsShown() {
+  const v = vc.s || await api().VoiceState();
+  vc.s = v;
+  $("s-v-on").checked = v.enabled;
+  $("s-v-mode").value = v.ptt ? "ptt" : "voice";
+  $("s-v-sense").value = v.sense;
+  $("s-v-gain").value = v.micGain;
+  $("s-v-vol").value = v.volume;
+  $("s-v-echo").checked = v.echo;
+  $("opt-echo").classList.toggle("hidden", !(st.state && st.state.platform === "macOS"));
+  voiceFormHints();
+  const d = await api().VoiceDevices();
+  fillDevices($("s-v-mic"), d.mics, v.mic);
+  fillDevices($("s-v-spk"), d.speakers, v.speaker);
+}
+function voiceFormHints() {
+  const v = vc.s, ptt = $("s-v-mode").value === "ptt";
+  $("v-mode-hint").textContent = ptt
+    ? "Mantén " + (v ? v.pttKey : "la tecla") + " mientras hablas, también con el juego delante (el juego sigue recibiendo la tecla)."
+    : "Se abre sola cuando hablas. Durante la partida, Shift+M cierra o abre el micrófono (suena un tono).";
+  $("opt-sense").classList.toggle("hidden", ptt);
+  $("s-v-gain-v").textContent = $("s-v-gain").value + "%";
+  $("s-v-vol-v").textContent = $("s-v-vol").value + "%";
+}
+function saveVoice() {
+  const v = vc.s || {};
+  api().VoiceSave({
+    enabled: $("s-v-on").checked, muted: !!v.muted, ptt: $("s-v-mode").value === "ptt", sense: +$("s-v-sense").value,
+    micGain: +$("s-v-gain").value, volume: +$("s-v-vol").value, echo: $("s-v-echo").checked,
+    mic: $("s-v-mic").value, speaker: $("s-v-spk").value,
+  });
+}
+for (const id of ["s-v-on", "s-v-mode", "s-v-sense", "s-v-gain", "s-v-vol", "s-v-echo", "s-v-mic", "s-v-spk"]) {
+  $(id).addEventListener("change", () => { voiceFormHints(); saveVoice(); });
+}
+for (const id of ["s-v-gain", "s-v-vol"]) $(id).addEventListener("input", voiceFormHints);
+
 // ---------------- live events from Go ----------------
 function onOnline(ev) {
   switch (ev.type) {
@@ -706,6 +837,7 @@ function boot() {
   // hands dropped files to Go (OnFileDrop in app.go), wherever they land in the window
   rt().OnFileDrop(() => {}, false);
   rt().EventsOn("online", onOnline);
+  rt().EventsOn("voice", onVoice); // [voice] 10 times a second while in a channel
   rt().EventsOn("toast", (t) => note(t.kind === "bad" ? "Algo falló" : "Aviso", t.text, t.kind));
   rt().EventsOn("dlss", (d) => {
     if (d.skipped && d.skipped.length) note("Eso no es una DLL de DLSS que sirva", d.skipped.join(", "), "bad", null, 9);
@@ -751,7 +883,10 @@ function boot() {
     tick();
     const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); $("m-match").classList.add("hidden"); return; } tick(); }, 1000);
   });
-  refresh().then(async () => { for (const ev of (await api().OnlineSnapshot()) || []) onOnline(ev); });
+  refresh().then(async () => {
+    for (const ev of (await api().OnlineSnapshot()) || []) onOnline(ev);
+    onVoice(await api().VoiceState());
+  });
 }
 
 (function waitRuntime(n) {

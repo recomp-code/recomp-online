@@ -130,3 +130,6 @@ func (g *game) prepareCmd(cmd *exec.Cmd) func() {
 
 // dataFolder: what "Abrir carpeta" opens (the DLSS folder on Windows).
 func (g *game) dataFolder() string { return g.dlssDir }
+
+// nativeUpscale: the native renderer's upscaler: DLSS on NVIDIA RTX, FSR 2 wherever DLSS cannot run (the runtime decides)
+const nativeUpscale = "dlss"

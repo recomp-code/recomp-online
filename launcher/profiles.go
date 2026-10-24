@@ -117,6 +117,9 @@ var dbzProfile = &profile{
 			{QualityOption{"Alta (4x)", "Para M Pro."}, "dbz_4x.ini", "metal", false},
 			{QualityOption{"Equilibrada (3x)", "La más ligera: para cualquier Mac con chip M."}, "dbz_3x.ini", "metal", false},
 			{QualityOption{"Apple MetalFX (3x reescalado)", "3x reescalado a tu pantalla con MetalFX: más nítida que 3x, pero pide casi el doble de GPU."}, "dbz_metalfx.ini", "metal", false},
+			// the runtime's own renderer on Vulkan (MoltenVK) with no PCSX2 host: render 2x, upscaled to the screen in
+			// fullscreen by MetalFX's temporal scaler with the game's real depth and motion. Online too (plays with PCSX2 players)
+			{QualityOption{"Nativo + MetalFX (sin PCSX2)", "El renderizador propio: más fps y menos CPU; en pantalla completa lo reescala MetalFX de Apple. También en línea."}, "", "native", false},
 		},
 	},
 	DLSSFolder: true, Fps60Sites: true,

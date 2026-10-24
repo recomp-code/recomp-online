@@ -181,11 +181,19 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 	return ini, `-ini "` + ini + `"`, env, nil
 }
 
-// nativeSetup: the runtime's own renderer (no GS host); the Mac runtime still needs its folders and data in place.
+// nativeSetup: the runtime's own renderer (no GS host); the Mac runtime still needs its folders and data in place, and
+// its Vulkan is the MoltenVK the app carries (Contents/Frameworks), opened by path.
 func (g *game) nativeSetup() []string {
 	_ = g.setupRuntime()
-	return []string{"PS2X_EXEDIR=" + g.runtimeDir}
+	env := []string{"PS2X_EXEDIR=" + g.runtimeDir}
+	if mvk := filepath.Join(filepath.Dir(g.res), "Frameworks", "libMoltenVK.dylib"); fileExists(mvk) {
+		env = append(env, "GRANITE_VULKAN_LIBRARY="+mvk)
+	}
+	return env
 }
+
+// nativeUpscale: the native renderer's upscaler on a Mac is Apple's MetalFX (the runtime builds no FSR2 or DLSS there)
+const nativeUpscale = "metalfx"
 
 // prepareCmd: the runtime and the GS host write to logs/juego.log (their standard output and error). The previous
 // game's log stays as juego-anterior.log: after an online match that went wrong the player often starts another game

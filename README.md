@@ -90,11 +90,30 @@ más su `SHA256SUMS`.
 | POST | `/api/status` | `{waiting}` buscar partida |
 | POST | `/api/invite`, `/api/invite/respond` | invitar, aceptar o rechazar |
 | POST | `/api/rooms`, `/api/rooms/join`, `/leave`, `/start`, `/kick` | salas |
+| POST | `/api/rooms/mute` | `{user, mute}` el creador silencia a alguien para toda la sala (chat de voz) |
 | POST | `/api/chat` | mensaje a la sala |
 | POST | `/api/match/end` | fin de la partida (la sala pasa al siguiente turno) |
 | POST | `/api/friends` | `{user, add}` |
 
 Todas las rutas salvo `health`, `register` y `login` piden `Authorization: Bearer <token>`.
+
+### Chat de voz
+
+La voz va por el mismo puerto UDP del relay, desde un socket del launcher (nunca el del juego). Un canal es una
+**sala** (hasta 4: los dos que pelean y los que esperan turno siguen hablando entre peleas y con la rotación) o la
+partida 1 contra 1 de una invitación (se cierra con la partida).
+
+- Al entrar en la sala (o empezar la partida de una invitación) el WebSocket manda a cada jugador, solo a él,
+  `{"type":"voice","channel","relay","slot":1-4,"token"}`; al volver a conectarse recibe el mismo sitio y token.
+  `room.voice` (`{usuario: slot}`) y `room.muted` dicen quién es quién; en la partida de una invitación, `match.voice`.
+  Al salir llega `voice_end`.
+- UDP: `"RLV1" + token` registra (respuesta `"RLVA" + slot`; se repite cada pocos segundos para mantener abierto el
+  NAT en silencio). `'v' + slot + datos`: voz; el relay escribe el slot de quien la manda (no se fía del que traiga)
+  y la copia a los demás del canal sin decodificarla. `'p' + datos`: ping, vuelve igual a quien lo manda.
+- Quién oye a quién se calcula cuando cambia (entradas, salidas, bloqueos, silencio del creador): entre dos jugadores
+  con un bloqueo de por medio no pasa la voz en ningún sentido. Máximo 250 datagramas por segundo por jugador.
+- Lo que añade el relay (`go test -run VoiceRelayLatency -v`, 4 hablando a la vez a 100 datagramas/s): p50 ~0.26 ms,
+  p99 ~0.6 ms en local; ~10 µs de CPU por datagrama recibido con sus 3 envíos, sin reservas de memoria.
 
 ## Licencia
 

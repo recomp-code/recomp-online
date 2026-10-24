@@ -77,7 +77,9 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		on, rooms, matches := a.hub.counts()
 		relays, packets := a.hub.rl.stats()
-		writeJSONResp(w, 200, map[string]any{"ok": true, "online": on, "rooms": rooms, "matches": matches, "relays": relays, "relayed": packets})
+		voices, voiced := a.hub.rl.voice.stats()
+		writeJSONResp(w, 200, map[string]any{"ok": true, "online": on, "rooms": rooms, "matches": matches, "relays": relays, "relayed": packets,
+			"voices": voices, "voiced": voiced})
 	})
 	mux.HandleFunc("POST /api/register", a.register)
 	mux.HandleFunc("POST /api/login", a.login)
@@ -178,6 +180,22 @@ func (a *api) routes() http.Handler {
 			return
 		}
 		if err := a.hub.kick(u, b.User); err != nil {
+			fail(w, 409, err)
+			return
+		}
+		writeJSONResp(w, 200, map[string]bool{"ok": true})
+	}))
+	// [voice] the room's owner silences a player for everybody, or gives the voice back
+	mux.HandleFunc("POST /api/rooms/mute", a.withUser(func(u string, w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			User string
+			Mute bool
+		}
+		if err := readBody(r, &b); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		if err := a.hub.muteInRoom(u, b.User, b.Mute); err != nil {
 			fail(w, 409, err)
 			return
 		}
@@ -287,6 +305,7 @@ func (a *api) routes() http.Handler {
 			return
 		}
 		a.hub.friendsChanged(u)
+		a.hub.blocksChanged(u) // [voice]
 		writeJSONResp(w, 200, map[string]any{"blocked": a.st.blocked(u), "friends": a.st.friends(u)})
 	}))
 	// [netcard] the memory card both games of a match boot from: player 1 uploads its own (raw bytes, the launcher's

@@ -7,3 +7,7 @@ testdata/
 *.log
 *.png
 launcher/build/
+# the voice DLL's import library and objects (launcher/voice/build.sh)
+*.lib
+*.obj
+*.pdb

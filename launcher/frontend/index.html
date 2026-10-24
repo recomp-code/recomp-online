@@ -109,6 +109,16 @@
             <label class="seek"><input type="checkbox" id="s-waiting"><span>Buscar partida</span></label>
           </div>
         </div>
+        <!-- [voice] the voice of my room (or of an invitation's match) -->
+        <div class="voice hidden" id="voice-bar">
+          <button class="mic" id="v-mic" type="button" title="Durante la partida: Shift+M">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15"/><path class="slash" d="M2 2l12 12"/></svg>
+            <span id="v-mic-text">Micrófono</span>
+          </button>
+          <div class="vmeter"><i id="v-level"></i></div>
+          <div class="v-txt"><span id="v-status"></span><small class="err" id="v-err"></small></div>
+          <div class="v-people" id="v-people"></div>
+        </div>
         <div class="split">
           <div class="box">
             <div class="box-h">Jugando <span id="p-game">DBZ BT4</span> ahora <span class="n" id="p-count"></span></div>
@@ -157,6 +167,24 @@
           <div class="ctl"><input id="s-server" spellcheck="false"><button class="txtbtn" id="btn-server" type="button">Guardar</button>
             <small class="err" id="srv-err"></small></div>
         </div>
+      </div>
+      <h3 class="sect">Chat de voz</h3>
+      <div class="opts" id="voice-opts">
+        <div class="opt"><label for="s-v-on">Chat de voz</label><div class="ctl"><input type="checkbox" class="sw" id="s-v-on">
+          <small>Hablas con los de tu sala, también mientras pelean, y con tu rival en una invitación. La voz va por el servidor: nadie ve tu IP.</small></div></div>
+        <div class="opt"><label for="s-v-mode">Cuándo se oye tu voz</label><div class="ctl"><select id="s-v-mode">
+            <option value="voice">Al hablar (detecta tu voz)</option>
+            <option value="ptt">Mientras mantengas una tecla</option>
+          </select><small id="v-mode-hint"></small></div></div>
+        <div class="opt" id="opt-sense"><label for="s-v-sense">Sensibilidad</label><div class="ctl"><input type="range" id="s-v-sense" min="0" max="100" step="5">
+          <div class="vmeter wide"><i id="v-level2"></i></div>
+          <small>Más alta: se abre con voz más baja, y también con más ruido de fondo. El medidor se mueve (verde: se te oye) cuando estás en una sala.</small></div></div>
+        <div class="opt"><label for="s-v-mic">Micrófono</label><div class="ctl"><select id="s-v-mic"></select></div></div>
+        <div class="opt"><label for="s-v-gain">Volumen del micrófono</label><div class="ctl"><input type="range" id="s-v-gain" min="0" max="300" step="10"><span class="pct" id="s-v-gain-v"></span></div></div>
+        <div class="opt"><label for="s-v-spk">Salida</label><div class="ctl"><select id="s-v-spk"></select></div></div>
+        <div class="opt"><label for="s-v-vol">Volumen de las voces</label><div class="ctl"><input type="range" id="s-v-vol" min="0" max="200" step="10"><span class="pct" id="s-v-vol-v"></span></div></div>
+        <div class="opt hidden" id="opt-echo"><label for="s-v-echo">Cancelación de eco</label><div class="ctl"><input type="checkbox" class="sw" id="s-v-echo">
+          <small>Actívala si juegas con las bocinas en vez de auriculares: los demás no se oirán a sí mismos. Usa el micrófono y la salida del sistema.</small></div></div>
       </div>
       <p class="plain dim" id="build-line"></p>
     </section>

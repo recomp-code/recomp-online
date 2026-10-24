@@ -1,11 +1,13 @@
 // macOS helpers for the launcher (cgo, app_darwin.go): the launcher in front, the GS host brought
-// to the front, the screen's work area, the Shift+Tab hotkey (Carbon: no accessibility permission needed) and the
-// controller's Back / Start / Guide (GameController, also while another app is in front).
+// to the front, the screen's work area, the Shift+Tab and Shift+M hotkeys (Carbon: no accessibility permission
+// needed), the controller's Back / Start / Guide (GameController, also while another app is in front), and for the
+// voice chat the right Option key (push to talk) and the microphone permission.
 // AppKit only on the main thread: everything goes through onMain.
 
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <GameController/GameController.h>
+#import <AVFoundation/AVFoundation.h>
 #include <libproc.h>
 
 static void onMain(dispatch_block_t b)
@@ -79,15 +81,17 @@ void rlWorkArea(int* w, int* h)
 	*h = (int)r.size.height;
 }
 
-// ---- Shift+Tab ----
+// ---- Shift+Tab (1) and Shift+M (2, the voice chat's microphone) ----
 
-extern void goHotkey(void);
-static EventHotKeyRef s_hotkey;
+extern void goHotkey(int id);
+static EventHotKeyRef s_hotkey, s_hotkeyMute;
 static int s_handler;
 
 static OSStatus hotkeyHandler(EventHandlerCallRef call, EventRef event, void* user)
 {
-	goHotkey();
+	EventHotKeyID id = {0, 0};
+	GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof id, NULL, &id);
+	goHotkey((int)id.id);
 	return noErr;
 }
 
@@ -106,6 +110,11 @@ int rlHotkeyStart(void)
 			EventHotKeyID id = {'rcmp', 1};
 			ok = RegisterEventHotKey(kVK_Tab, shiftKey, id, GetApplicationEventTarget(), 0, &s_hotkey) == noErr;
 		}
+		if (!s_hotkeyMute)
+		{
+			EventHotKeyID id = {'rcmp', 2};
+			RegisterEventHotKey(kVK_ANSI_M, shiftKey, id, GetApplicationEventTarget(), 0, &s_hotkeyMute);
+		}
 	});
 	return ok;
 }
@@ -117,6 +126,11 @@ void rlHotkeyStop(void)
 		{
 			UnregisterEventHotKey(s_hotkey);
 			s_hotkey = NULL;
+		}
+		if (s_hotkeyMute)
+		{
+			UnregisterEventHotKey(s_hotkeyMute);
+			s_hotkeyMute = NULL;
 		}
 	});
 }
@@ -149,4 +163,29 @@ unsigned rlPadButtons(void)
 		}
 	});
 	return b;
+}
+
+// ---- voice chat ----
+
+// rlRightOptionDown: push to talk. The modifier state is read, not hooked: no permission, and the game still gets
+// the key.
+int rlRightOptionDown(void)
+{
+	return (CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState) & 0x40) != 0; // NX_DEVICERALTKEYMASK
+}
+
+// rlMicAccess: 0 not asked yet, 1 restricted, 2 denied, 3 allowed (AVAuthorizationStatus).
+int rlMicAccess(void)
+{
+	return (int)[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+}
+
+extern void goMicAnswer(int granted);
+
+// rlMicRequest: macOS asks the player once (Info.plist's NSMicrophoneUsageDescription says why).
+void rlMicRequest(void)
+{
+	[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+		goMicAnswer(granted ? 1 : 0);
+	}];
 }

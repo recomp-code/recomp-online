@@ -115,6 +115,20 @@ partida 1 contra 1 de una invitación (se cierra con la partida).
 - Lo que añade el relay (`go test -run VoiceRelayLatency -v`, 4 hablando a la vez a 100 datagramas/s): p50 ~0.26 ms,
   p99 ~0.6 ms en local; ~10 µs de CPU por datagrama recibido con sus 3 envíos, sin reservas de memoria.
 
+En el launcher (`launcher/voice/`) la voz es un motor en C, para que el audio nunca espere al recolector de Go: 48 kHz
+mono en tramos de 10 ms, Opus (VOIP, con FEC dentro del paquete), un buffer de jitter por jugador que se adapta solo
+(20 ms en una red limpia, 80 ms como mucho), relleno de huecos, control de la deriva de reloj entre tarjetas de sonido y
+una puerta de ruido por mínimos estadísticos (un ventilador constante no la abre; la voz por encima sí). Silencio = no
+se manda nada. En macOS va compilado dentro del launcher (cgo); en Windows es una DLL metida en `Recomp.exe`
+(`recompvoice_windows_amd64.dll`, se carga sin cgo). `launcher/voice/build.sh` rehace Opus y la DLL desde un Mac (zig).
+
+- Micrófono: se abre al hablar o mientras se mantiene Alt derecho / Opción derecha. Silenciado, el micrófono ni se
+  abre. Durante la partida Shift+M lo cierra o lo abre (con un tono). Cada jugador: volumen y silencio propios.
+- macOS: cancelación de eco opcional (la unidad de voz de Apple, para quien juega con las bocinas).
+- Pruebas: `launcher/voice/test/e2e.c` (4 motores por un relay con pérdidas y jitter: latencia, huecos, mezcla,
+  silencios, puerta, deriva), `test/devices.c` (los altavoces de verdad) y `RECOMP_VOICE_E2E=1 go test -run
+  VoiceServer` en `launcher/` (el launcher contra este servidor).
+
 ## Licencia
 
 GPL-3.0, como los ports.

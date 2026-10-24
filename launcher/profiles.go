@@ -138,6 +138,12 @@ func dbzEnv(g *game, s Settings, m *netMatch) []string {
 		// (matchCard); the two compare a hash of the game state every second, so any difference shows at once.
 		seed, _ := matchSeeds(m.Token)
 		env = append(env, "PS2X_FRAMESTEP=1", "PS2X_FIBERS=1", fmt.Sprintf("PS2X_RANDSEED=%d", seed))
+	} else {
+		// Offline the GS host skips its synchronous GPU readbacks (HWDownloadMode 2): the glow builds its palette from
+		// a render target every frame and the host waited on the GPU for it -- +12% frames in an uncapped fight, the
+		// picture unchanged. Online keeps the preset's accurate mode: a readback can reach the game, and both machines
+		// must see the same data.
+		env = append(env, "PS2X_HWDOWNLOAD_MODE=2")
 	}
 	return append(env, "PS2X_FPS60="+b01(fps60), "PS2X_UNLOCK_ALL="+b01(unlock))
 }

@@ -314,3 +314,17 @@ func BenchmarkVoiceForward(b *testing.B) {
 		rl.voice.handle(rl.conn, pkt, from)
 	}
 }
+
+// Switching games while in a room: the new stream takes the place and is told the room (and its voice) are left.
+func TestSwitchGameLeavesRoom(t *testing.T) {
+	base, _ := testServer(t)
+	a := newTClient(t, base, "Goku", "kamehameha", "dbzbt4", "v1")
+	a.wait("hello")
+	post(t, base, "/api/rooms", a.token, map[string]any{"name": "Sala", "max": 4})
+	a.wait("voice")
+	_, events := dialWS(t, base, a.token, "br4", "v1")
+	c := &tclient{t: t, user: "Goku", events: events}
+	c.wait("hello")
+	c.wait("voice_end")
+	c.wait("room_left")
+}

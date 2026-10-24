@@ -278,15 +278,16 @@ func (h *hub) attach(user, game, build string) *client {
 	c := &client{user: user, game: game, build: build, ch: make(chan []byte, 64), since: time.Now()}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if old := h.clients[lc(user)]; old != nil && !old.gone {
+	old := h.clients[lc(user)]
+	h.clients[lc(user)] = c // first: what follows goes to the new stream (sending on the old one's closed channel panicked)
+	h.sendLocked(user, map[string]any{"type": "hello", "user": user, "game": game})
+	if old != nil && !old.gone {
 		close(old.ch) // the same account opened a new launcher: the old stream ends
 		if old.game != game {
 			h.leaveRoomLocked(user)
 			h.broadcastLocked(old.game)
 		}
 	}
-	h.clients[lc(user)] = c
-	h.sendLocked(user, map[string]any{"type": "hello", "user": user, "game": game})
 	if rid, ok := h.inRoom[lc(user)]; ok {
 		if r := h.rooms[rid]; r != nil {
 			h.sendLocked(user, map[string]any{"type": "room", "room": r})

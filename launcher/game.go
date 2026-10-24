@@ -241,6 +241,31 @@ func (g *game) qualityOptions() []QualityOption {
 	return out
 }
 
+// nativeQuality: the chosen quality is the runtime's own renderer (no GS host).
+func (g *game) nativeQuality(s Settings) bool {
+	qs := g.p.qualities()
+	return s.Quality >= 0 && s.Quality < len(qs) && qs[s.Quality].Renderer == "native"
+}
+
+// hostQuality: the quality the GS host runs: the chosen one, or for the native renderer (online) the plain DLSS / FSR
+// preset, else the first.
+func (g *game) hostQuality(s Settings) int {
+	qs := g.p.qualities()
+	q := s.Quality
+	if q < 0 || q >= len(qs) {
+		return 0
+	}
+	if qs[q].Renderer == "native" {
+		for i, p := range qs {
+			if strings.Contains(p.Ini, "dlss") && !p.DLSS5 {
+				return i
+			}
+		}
+		return 0
+	}
+	return q
+}
+
 // hostIni: the GS host ini for the chosen quality and the game's options.
 func (g *game) hostIni(s Settings, q int) string {
 	p := g.p.qualities()[q]
@@ -388,9 +413,16 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if m != nil && !m.valid() {
 		return errors.New("la partida que mandó el servidor no es válida")
 	}
-	// the GS host, its ini and the platform's own variables (game_windows.go / game_darwin.go)
-	hostIni, args, penv, err := g.hostSetup(s)
-	if err != nil {
+	// the GS host, its ini and the platform's own variables (game_windows.go / game_darwin.go); the native renderer has no
+	// host: the runtime draws and presents itself. Online too: a native player and a PCSX2 one stay in sync (0 desyncs in
+	// 8000 frames; the fight-start fade's pixel download is out of the state hash in every mode)
+	native := g.nativeQuality(s)
+	var hostIni, args string
+	var penv []string
+	var err error
+	if native {
+		penv = g.nativeSetup()
+	} else if hostIni, args, penv, err = g.hostSetup(s); err != nil {
 		return err
 	}
 	_ = os.MkdirAll(g.logs, 0o755)
@@ -404,10 +436,17 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 	if s.Fullscreen {
 		args += " -fullscreen"
 	}
-	env := append(os.Environ(),
-		"PS2X_CD_IMAGE="+s.ISO, "PS2X_GS_LIVE=1", "PS2X_GSHOST_ARGS="+args,
-		"PS2X_LIVE_SERIAL="+g.p.Serial, "PS2X_LIVE_TITLE="+g.p.Title,
-		fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h))
+	env := append(os.Environ(), "PS2X_CD_IMAGE="+s.ISO, "PS2X_LIVE_SERIAL="+g.p.Serial, "PS2X_LIVE_TITLE="+g.p.Title)
+	if native {
+		mode := "0"
+		if s.Fullscreen {
+			mode = "2"
+		}
+		env = append(env, "PS2X_GS_LIVE=0", "PS2X_SEAMVK=1", "PS2X_SEAMVK_SCALE=2", "PS2X_SEAMVK_UPSCALE=dlss", "PS2X_WINDOW_MODE="+mode,
+			fmt.Sprintf("PS2X_WINDOW_W=%d", w), fmt.Sprintf("PS2X_WINDOW_H=%d", h))
+	} else {
+		env = append(env, "PS2X_GS_LIVE=1", "PS2X_GSHOST_ARGS="+args, fmt.Sprintf("PS2X_HOST_WINDOW=%dx%d", w, h))
+	}
 	env = append(env, penv...)
 	if g.p.ID != dbzProfile.ID { // the game's own memory card folder (DBZ's runtime keeps it in savedata/ by itself)
 		_ = os.MkdirAll(g.cardRoot(), 0o755)

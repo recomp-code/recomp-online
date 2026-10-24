@@ -169,7 +169,7 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 		return "", "", nil, err
 	}
 	touchISO(s.ISO)
-	name := g.hostIni(s, s.Quality)
+	name := g.hostIni(s, g.hostQuality(s))
 	ini := filepath.Join(g.gshostDir, name)
 	if !fileExists(ini) {
 		if err := copyWritable(filepath.Join(g.res, "presets", name), ini); err != nil {
@@ -179,6 +179,12 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 	env := []string{"PS2X_EXEDIR=" + g.runtimeDir, "PS2X_GSHOST=" + filepath.Join(g.root, "pcsx2-gsrunner")}
 	// the ini's full path, quoted: Application Support has a space
 	return ini, `-ini "` + ini + `"`, env, nil
+}
+
+// nativeSetup: the runtime's own renderer (no GS host); the Mac runtime still needs its folders and data in place.
+func (g *game) nativeSetup() []string {
+	_ = g.setupRuntime()
+	return []string{"PS2X_EXEDIR=" + g.runtimeDir}
 }
 
 // prepareCmd: the runtime and the GS host write to logs/juego.log (their standard output and error). The previous

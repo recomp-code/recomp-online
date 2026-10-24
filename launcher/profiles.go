@@ -106,6 +106,9 @@ var dbzProfile = &profile{
 			{QualityOption{"Equilibrada (3x)", "Un buen punto medio."}, "dbz_3x.ini", "vulkan", false},
 			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "dbz_dlss.ini", "vulkan", false},
 			{QualityOption{"DLSS 5 (experimental)", "DLSS con el pase neural de NVIDIA. Necesita una RTX y DLSS 5 Swapper."}, "dbz_dlss_dx12.ini", "dx12", true},
+			// the runtime's own Vulkan renderer, no PCSX2 host: render 2x, upscaled to the window with DLSS (NVIDIA RTX) or
+			// FSR 2 (any GPU) fed the game's real depth and motion. Online too (plays with PCSX2 players)
+			{QualityOption{"Nativo + DLSS / FSR 2 (sin PCSX2)", "El renderizador propio en Vulkan: más fps y menos CPU. DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native", false},
 		},
 		// GPU per frame in a 60 fps fight, M2 Pro, 3200x1800 window: 6x 13.5 ms, 4x 7.3 ms, 3x 5.8 ms, MetalFX (3x +
 		// upscale to the window) 10.5 ms -- MetalFX is the second most expensive, not a light option.

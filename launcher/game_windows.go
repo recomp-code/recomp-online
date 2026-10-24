@@ -78,10 +78,7 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 		}
 	}
 	qs := g.p.qualities()
-	q, hostDir := s.Quality, g.gshostDir
-	if q < 0 || q >= len(qs) {
-		q = 0
-	}
+	q, hostDir := g.hostQuality(s), g.gshostDir
 	if qs[q].DLSS5 {
 		if d, err := g.prepareDLSS5Host(); err == nil {
 			hostDir = d
@@ -103,6 +100,16 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 		env = append(env, "PS2X_GSHOST="+filepath.Join(hostDir, "pcsx2-gsrunner.exe"))
 	}
 	return filepath.Join(hostDir, ini), renderer + " -ini " + ini, env, nil
+}
+
+// nativeSetup: the runtime's own renderer runs DLSS itself, so the DLSS the player chose goes next to the runtime too.
+func (g *game) nativeSetup() []string {
+	if g.p.DLSSFolder {
+		if sr := g.superResDLL(); sr != "" {
+			_ = copyIfChanged(sr, filepath.Join(g.runtimeDir, "nvngx_dlss.dll"))
+		}
+	}
+	return []string{"PS2X_LOGFILE=" + filepath.Join(g.logs, "juego.log")}
 }
 
 // prepareCmd: DBZ's runtime writes its own log (PS2X_LOGFILE); PS2Recomp's (BR4) writes to its standard output and

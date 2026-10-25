@@ -195,6 +195,9 @@ func (g *game) nativeSetup() []string {
 // nativeUpscale: the native renderer's upscaler on a Mac is Apple's MetalFX (the runtime builds no FSR2 or DLSS there)
 const nativeUpscale = "metalfx"
 
+// nativeFrameGen: frame generation is not on macOS yet (the window takes the frame through an IOSurface there)
+var nativeFrameGen []string
+
 // prepareCmd: the runtime and the GS host write to logs/juego.log (their standard output and error). The previous
 // game's log stays as juego-anterior.log: after an online match that went wrong the player often starts another game
 // before anyone looks at it.

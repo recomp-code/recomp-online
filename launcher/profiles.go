@@ -99,6 +99,8 @@ var dbzProfile = &profile{
 		{"fps60", "Peleas a 60 fps", "En PS2 iban a 30. También se cambia dentro del juego.", true},
 		{"unlock", "Contenido desbloqueado", "Todos los personajes, escenarios y modos desde el principio, como el truco del menú. " +
 			"Cuando el juego guarda, se queda en tu memoria. En línea siempre está activado.", true},
+		{"framegen", "Más fps en pantalla", "Solo con la calidad Nativo en Windows: crea un cuadro intermedio entre cada dos con el movimiento real del juego, " +
+			"hasta 120 en pantalla sin acelerar el juego. En monitores de menos de 90 Hz se apaga sola.", true},
 	},
 	Qualities: map[string][]qualityPreset{
 		"Windows": {

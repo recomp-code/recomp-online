@@ -112,6 +112,10 @@ func (g *game) nativeSetup() []string {
 	return []string{"PS2X_LOGFILE=" + filepath.Join(g.logs, "juego.log")}
 }
 
+// nativeFrameGen: the "more fps on screen" option on the native renderer: a frame generated from the game's real motion
+// between every two, the window presented through a Vulkan swapchain (the runtime's framegen + vkpresent)
+var nativeFrameGen = []string{"PS2X_SEAMVK_FRAMEGEN=1", "PS2X_SEAMVK_VKPRESENT=1"}
+
 // prepareCmd: DBZ's runtime writes its own log (PS2X_LOGFILE); PS2Recomp's (BR4) writes to its standard output and
 // error, which go to logs\juego.log (the previous one stays as juego-anterior.log).
 func (g *game) prepareCmd(cmd *exec.Cmd) func() {

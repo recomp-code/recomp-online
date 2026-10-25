@@ -118,8 +118,10 @@ func (g *game) nativeSetup() []string {
 }
 
 // nativeFrameGen: the "more fps on screen" option on the native renderer: a frame generated from the game's real motion
-// between every two, the window presented through a Vulkan swapchain (the runtime's framegen + vkpresent)
-var nativeFrameGen = []string{"PS2X_SEAMVK_FRAMEGEN=1", "PS2X_SEAMVK_VKPRESENT=1"}
+// between every two, presented by the window's GL as before. (Not through the runtime's Vulkan swapchain, vkpresent: it
+// presents on a child window, and in exclusive fullscreen Windows shows only the GL window, which no longer swapped:
+// a black screen.)
+var nativeFrameGen = []string{"PS2X_SEAMVK_FRAMEGEN=1"}
 
 // prepareCmd: DBZ's runtime writes its own log (PS2X_LOGFILE); PS2Recomp's (BR4) writes to its standard output and
 // error, which go to logs\juego.log (the previous one stays as juego-anterior.log).

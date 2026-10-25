@@ -13,7 +13,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const launcherVersion = "3.3"
+const launcherVersion = "3.4"
 
 // defaultServer is set at build time: -ldflags "-X main.defaultServer=https://online.tudominio.com"
 var defaultServer = "https://online.example.com"

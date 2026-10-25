@@ -199,7 +199,7 @@ function renderPlay() {
   $("s-full").checked = s.settings.fullscreen;
   $("s-delay").value = String(s.settings.netDelay);
   const d = s.dlss;
-  $("dlss-line").textContent = mac ? "Memoria, ajustes y logs/juego.log." : "Versión " + d.version + (d.own ? " (la tuya)" : "") + (d.dlss5 ? " · DLSS 5 disponible" : "");
+  $("dlss-line").textContent = mac ? "Memoria, ajustes y logs/juego.log." : (d.version && d.version !== "0.0.0" ? "Versión " + d.version + (d.own ? " (la tuya)" : "") : "Viene con el juego: se instala con él");
   $("s-server").value = s.server;
   $("acc-line").textContent = s.loggedIn ? "Conectado como " + s.user : "No has entrado";
   $("btn-logout").classList.toggle("hidden", !s.loggedIn);

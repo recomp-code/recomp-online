@@ -103,14 +103,11 @@ var dbzProfile = &profile{
 			"hasta 120 en pantalla sin acelerar el juego. En monitores de menos de 90 Hz se apaga sola.", true},
 	},
 	Qualities: map[string][]qualityPreset{
+		// Windows: only the runtime's own Vulkan renderer, as on macOS (no PCSX2 host any more): render 2x, upscaled to the
+		// window with DLSS (NVIDIA RTX) or FSR 2 (any GPU) fed the game's real depth and motion. Online with everyone. A
+		// quality saved from the old list (6x, 3x, DLSS / FSR, DLSS 5) is out of range and falls back to this one.
 		"Windows": {
-			{QualityOption{"Máxima (6x)", "Para gráficas potentes (RTX 3070, RX 6800 o mejor)."}, "dbz.ini", "vulkan", false},
-			{QualityOption{"Equilibrada (3x)", "Un buen punto medio."}, "dbz_3x.ini", "vulkan", false},
-			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "dbz_dlss.ini", "vulkan", false},
-			{QualityOption{"DLSS 5 (experimental)", "DLSS con el pase neural de NVIDIA. Necesita una RTX y DLSS 5 Swapper."}, "dbz_dlss_dx12.ini", "dx12", true},
-			// the runtime's own Vulkan renderer, no PCSX2 host: render 2x, upscaled to the window with DLSS (NVIDIA RTX) or
-			// FSR 2 (any GPU) fed the game's real depth and motion. Online too (plays with PCSX2 players)
-			{QualityOption{"Nativo + DLSS / FSR 2 (sin PCSX2)", "El renderizador propio en Vulkan: más fps y menos CPU. DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native", false},
+			{QualityOption{"Nativo + DLSS / FSR 2", "El renderizador propio en Vulkan: DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native", false},
 		},
 		// macOS: only the runtime's own renderer on Vulkan (MoltenVK), no PCSX2 host: render 2x, upscaled to the screen's
 		// real pixels (Retina) by MetalFX's temporal scaler with the game's real depth and motion. A 60 fps fight in a

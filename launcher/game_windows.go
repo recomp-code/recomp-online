@@ -51,6 +51,11 @@ func launcherHome(launcherRoot string) string { return launcherRoot }
 
 func (g *game) defaultQuality() int {
 	qs := g.p.qualities()
+	for i, q := range qs { // the runtime's own renderer wherever the game has it (DBZ BT4: its only quality)
+		if q.Renderer == "native" {
+			return i
+		}
+	}
 	rtx := strings.Contains(strings.ToUpper(gpuNames()), "RTX")
 	for i, q := range qs {
 		if rtx && q.DLSS5 && g.dlss5Parts() != nil {

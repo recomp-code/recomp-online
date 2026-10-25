@@ -1,7 +1,8 @@
 package main
 
 // Windows: a game lives in its folder (<launcher>\games\<id>, or the launcher's own folder for an old DBZ BT4 zip);
-// the GS host draws with Vulkan (DX12 for DLSS 5) and can use the player's DLSS DLLs (dlss_windows.go).
+// the GS host (BR4, NBA) draws with Vulkan and DBZ's native renderer runs itself; both can use the player's DLSS DLL
+// (dlss_windows.go).
 
 import (
 	"os"
@@ -58,12 +59,7 @@ func (g *game) defaultQuality() int {
 	}
 	rtx := strings.Contains(strings.ToUpper(gpuNames()), "RTX")
 	for i, q := range qs {
-		if rtx && q.DLSS5 && g.dlss5Parts() != nil {
-			return i
-		}
-	}
-	for i, q := range qs {
-		if rtx && strings.Contains(q.Ini, "dlss") && !q.DLSS5 {
+		if rtx && strings.Contains(q.Ini, "dlss") {
 			return i
 		}
 	}
@@ -84,17 +80,6 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 	}
 	qs := g.p.qualities()
 	q, hostDir := g.hostQuality(s), g.gshostDir
-	if qs[q].DLSS5 {
-		if d, err := g.prepareDLSS5Host(); err == nil {
-			hostDir = d
-		} else {
-			for i, p := range qs { // fall back to the plain DLSS preset
-				if strings.Contains(p.Ini, "dlss") && !p.DLSS5 {
-					q = i
-				}
-			}
-		}
-	}
 	ini := g.hostIni(s, q)
 	if !fileExists(filepath.Join(hostDir, ini)) {
 		_ = copyIfChanged(filepath.Join(g.gshostDir, "presets", ini), filepath.Join(hostDir, ini))
@@ -135,6 +120,7 @@ func (g *game) nativeScale() string {
 }
 
 const autoScalePack = "2.5.2"
+
 // vulkanWindowPack: the first DBZ BT4 pack whose window is Vulkan's
 const vulkanWindowPack = "2.4.1"
 

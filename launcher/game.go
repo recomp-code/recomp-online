@@ -257,7 +257,7 @@ func (g *game) hostQuality(s Settings) int {
 	}
 	if qs[q].Renderer == "native" {
 		for i, p := range qs {
-			if strings.Contains(p.Ini, "dlss") && !p.DLSS5 {
+			if strings.Contains(p.Ini, "dlss") {
 				return i
 			}
 		}
@@ -276,11 +276,9 @@ func (g *game) hostIni(s Settings, q int) string {
 }
 
 type DLSSInfo struct {
-	Version     string `json:"version"`
-	Own         bool   `json:"own"`
-	DLSS5       bool   `json:"dlss5"`
-	DLSS5Neural string `json:"dlss5Neural"`
-	Folder      string `json:"folder"`
+	Version string `json:"version"`
+	Own     bool   `json:"own"`
+	Folder  string `json:"folder"`
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }

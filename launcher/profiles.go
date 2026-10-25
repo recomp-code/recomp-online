@@ -25,7 +25,6 @@ type qualityPreset struct {
 	QualityOption
 	Ini      string // file in gshost/ (copied from gshost/presets/ the first time)
 	Renderer string // GS host renderer: "vulkan", "dx12", "metal"
-	DLSS5    bool   // Windows: needs the separate DLSS 5 host (dlss_windows.go)
 }
 
 type profile struct {
@@ -123,14 +122,14 @@ var dbzProfile = &profile{
 		// window with DLSS (NVIDIA RTX) or FSR 2 (any GPU) fed the game's real depth and motion. Online with everyone. A
 		// quality saved from the old list (6x, 3x, DLSS / FSR, DLSS 5) is out of range and falls back to this one.
 		"Windows": {
-			{QualityOption{"Nativo + DLSS / FSR 2", "El renderizador propio en Vulkan: DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native", false},
+			{QualityOption{"Nativo + DLSS / FSR 2", "El renderizador propio en Vulkan: DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native"},
 		},
 		// macOS: only the runtime's own renderer on Vulkan (MoltenVK), no PCSX2 host: render 2x, upscaled to the screen's
 		// real pixels (Retina) by MetalFX's temporal scaler with the game's real depth and motion. A 60 fps fight in a
 		// Retina fullscreen holds 60 on an M2 Pro (the PCSX2 presets were 6x 13.5 ms of GPU per frame, MetalFX 10.5 ms).
 		// Online too (plays with PCSX2 players). A saved quality from the old list is out of range and falls back to it.
 		"macOS": {
-			{QualityOption{"Nativo + MetalFX", "El renderizador propio, sin emulador de gráficos: más fps y menos CPU; lo reescala MetalFX de Apple a la resolución de tu pantalla. También en línea."}, "", "native", false},
+			{QualityOption{"Nativo + MetalFX", "El renderizador propio, sin emulador de gráficos: más fps y menos CPU; lo reescala MetalFX de Apple a la resolución de tu pantalla. También en línea."}, "", "native"},
 		},
 	},
 	DLSSFolder: true, Fps60Sites: true,
@@ -202,8 +201,8 @@ var br4Profile = &profile{
 	},
 	Qualities: map[string][]qualityPreset{
 		"Windows": {
-			{QualityOption{"Máxima (6x)", "6x interno, para gráficas potentes."}, "br4.ini", "vulkan", false},
-			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "br4_dlss.ini", "vulkan", false},
+			{QualityOption{"Máxima (6x)", "6x interno, para gráficas potentes."}, "br4.ini", "vulkan"},
+			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "br4_dlss.ini", "vulkan"},
 		},
 	},
 	DLSSFolder:  true,
@@ -246,8 +245,8 @@ var nbaProfile = &profile{
 	},
 	Qualities: map[string][]qualityPreset{
 		"Windows": {
-			{QualityOption{"Máxima (4x)", "4x interno, para gráficas potentes."}, "nba.ini", "vulkan", false},
-			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "nba_dlss.ini", "vulkan", false},
+			{QualityOption{"Máxima (4x)", "4x interno, para gráficas potentes."}, "nba.ini", "vulkan"},
+			{QualityOption{"DLSS / FSR (2x reescalado)", "Reescala a tu pantalla: DLSS en NVIDIA RTX, FSR en las demás."}, "nba_dlss.ini", "vulkan"},
 		},
 	},
 	DLSSFolder:  true,

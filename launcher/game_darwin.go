@@ -192,6 +192,10 @@ func (g *game) nativeSetup() []string {
 // nativeUpscale: the native renderer's upscaler on a Mac is Apple's MetalFX (the runtime builds no FSR2 or DLSS there)
 const nativeUpscale = "metalfx"
 
+// nativeScale: the Mac app's runtime keeps the fixed 2x until it carries the autoscale layer (MetalFX's pixel budget in
+// the runtime sizes its output)
+func (g *game) nativeScale() string { return "2" }
+
 // nativeFrameGen: frame generation is not on macOS yet (the window takes the frame through an IOSurface there)
 var nativeFrameGen []string
 

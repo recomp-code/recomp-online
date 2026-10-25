@@ -442,7 +442,7 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		if s.Fullscreen {
 			mode = "2"
 		}
-		env = append(env, "PS2X_GS_LIVE=0", "PS2X_SEAMVK=1", "PS2X_SEAMVK_SCALE=2", "PS2X_SEAMVK_UPSCALE="+nativeUpscale, "PS2X_WINDOW_MODE="+mode,
+		env = append(env, "PS2X_GS_LIVE=0", "PS2X_SEAMVK=1", "PS2X_SEAMVK_SCALE="+g.nativeScale(), "PS2X_SEAMVK_UPSCALE="+nativeUpscale, "PS2X_WINDOW_MODE="+mode,
 			fmt.Sprintf("PS2X_WINDOW_W=%d", w), fmt.Sprintf("PS2X_WINDOW_H=%d", h))
 		if g.p.opt(s, "framegen") {
 			env = append(env, nativeFrameGen...)

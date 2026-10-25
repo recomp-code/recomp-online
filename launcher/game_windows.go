@@ -124,6 +124,17 @@ func (g *game) nativeSetup() []string {
 	return env
 }
 
+// nativeScale: the native renderer's resolution. From pack 2.5.2 the runtime picks it from the size the game is shown at
+// ("auto": ~75% of the output's height under DLSS / FSR 2, 3x on a 1440p screen); older runtimes read "auto" as 1x, so
+// they keep the fixed 2x.
+func (g *game) nativeScale() string {
+	if v := g.packVersion(); v != "" && !newerVersion(autoScalePack, v) {
+		return "auto"
+	}
+	return "2"
+}
+
+const autoScalePack = "2.5.2"
 // vulkanWindowPack: the first DBZ BT4 pack whose window is Vulkan's
 const vulkanWindowPack = "2.4.1"
 

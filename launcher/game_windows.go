@@ -114,13 +114,21 @@ func (g *game) nativeSetup() []string {
 			_ = copyIfChanged(sr, filepath.Join(g.runtimeDir, "nvngx_dlss.dll"))
 		}
 	}
-	return []string{"PS2X_LOGFILE=" + filepath.Join(g.logs, "juego.log")}
+	env := []string{"PS2X_LOGFILE=" + filepath.Join(g.logs, "juego.log")}
+	// the window is Vulkan's alone and presented through the runtime's swapchain (GL draws off screen on a hidden window):
+	// from pack 2.4.1, whose runtime does that. Older runtimes presented through Vulkan on a window GL also drew into, and
+	// a fullscreen GL window that the driver scans out directly hid the swapchain: a black screen.
+	if v := g.packVersion(); v != "" && !newerVersion(vulkanWindowPack, v) {
+		env = append(env, "PS2X_SEAMVK_VKPRESENT=1")
+	}
+	return env
 }
 
+// vulkanWindowPack: the first DBZ BT4 pack whose window is Vulkan's
+const vulkanWindowPack = "2.4.1"
+
 // nativeFrameGen: the "more fps on screen" option on the native renderer: a frame generated from the game's real motion
-// between every two, presented by the window's GL as before. (Not through the runtime's Vulkan swapchain, vkpresent: it
-// presents on a child window, and in exclusive fullscreen Windows shows only the GL window, which no longer swapped:
-// a black screen.)
+// between every two
 var nativeFrameGen = []string{"PS2X_SEAMVK_FRAMEGEN=1"}
 
 // prepareCmd: DBZ's runtime writes its own log (PS2X_LOGFILE); PS2Recomp's (BR4) writes to its standard output and

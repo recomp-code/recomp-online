@@ -108,17 +108,14 @@ func (g *game) importOldSettings() {
 	_ = os.WriteFile(g.cfgPath, []byte(s), 0o644)
 }
 
-// defaultQuality by chip: 6x on Max/Ultra, 4x on Pro, plain 3x on the rest (their GPU is the smallest; MetalFX costs
-// nearly twice the GPU of 3x).
+// defaultQuality: the native renderer (the only macOS quality).
 func (g *game) defaultQuality() int {
-	chip := gpuNames()
-	switch {
-	case strings.Contains(chip, "Max") || strings.Contains(chip, "Ultra"):
-		return 0
-	case strings.Contains(chip, "Pro"):
-		return 1
+	for i, q := range g.p.qualities() {
+		if q.Renderer == "native" {
+			return i
+		}
 	}
-	return 2
+	return 0
 }
 
 // setupRuntime: the writable runtime folder: data/ (from the ISO), savedata/ (memory card + settings), mods/, and

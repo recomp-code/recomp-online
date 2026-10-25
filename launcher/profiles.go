@@ -112,16 +112,12 @@ var dbzProfile = &profile{
 			// FSR 2 (any GPU) fed the game's real depth and motion. Online too (plays with PCSX2 players)
 			{QualityOption{"Nativo + DLSS / FSR 2 (sin PCSX2)", "El renderizador propio en Vulkan: más fps y menos CPU. DLSS en NVIDIA RTX, FSR 2 en las demás. También en línea."}, "", "native", false},
 		},
-		// GPU per frame in a 60 fps fight, M2 Pro, 3200x1800 window: 6x 13.5 ms, 4x 7.3 ms, 3x 5.8 ms, MetalFX (3x +
-		// upscale to the window) 10.5 ms -- MetalFX is the second most expensive, not a light option.
+		// macOS: only the runtime's own renderer on Vulkan (MoltenVK), no PCSX2 host: render 2x, upscaled to the screen's
+		// real pixels (Retina) by MetalFX's temporal scaler with the game's real depth and motion. A 60 fps fight in a
+		// Retina fullscreen holds 60 on an M2 Pro (the PCSX2 presets were 6x 13.5 ms of GPU per frame, MetalFX 10.5 ms).
+		// Online too (plays with PCSX2 players). A saved quality from the old list is out of range and falls back to it.
 		"macOS": {
-			{QualityOption{"Máxima (6x)", "La imagen más nítida; pide mucha GPU: para M Max o Ultra."}, "dbz.ini", "metal", false},
-			{QualityOption{"Alta (4x)", "Para M Pro."}, "dbz_4x.ini", "metal", false},
-			{QualityOption{"Equilibrada (3x)", "La más ligera: para cualquier Mac con chip M."}, "dbz_3x.ini", "metal", false},
-			{QualityOption{"Apple MetalFX (3x reescalado)", "3x reescalado a tu pantalla con MetalFX: más nítida que 3x, pero pide casi el doble de GPU."}, "dbz_metalfx.ini", "metal", false},
-			// the runtime's own renderer on Vulkan (MoltenVK) with no PCSX2 host: render 2x, upscaled to the screen in
-			// fullscreen by MetalFX's temporal scaler with the game's real depth and motion. Online too (plays with PCSX2 players)
-			{QualityOption{"Nativo + MetalFX (sin PCSX2)", "El renderizador propio: más fps y menos CPU; en pantalla completa lo reescala MetalFX de Apple. También en línea."}, "", "native", false},
+			{QualityOption{"Nativo + MetalFX", "El renderizador propio, sin emulador de gráficos: más fps y menos CPU; lo reescala MetalFX de Apple a la resolución de tu pantalla. También en línea."}, "", "native", false},
 		},
 	},
 	DLSSFolder: true, Fps60Sites: true,

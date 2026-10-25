@@ -214,7 +214,7 @@ func (a *App) State() State {
 	a.net.mu.Unlock()
 	p := a.game.p
 	return State{Games: a.gameEntries(), Game: p.ID, Short: p.Short, Banner: p.Banner, Sub: p.Sub, Serial: p.Serial,
-		Installed: a.game.installed(), ISOMissing: p.ISOMissing, Controls: p.Controls, Options: p.Options, HasDLSS: p.DLSSFolder,
+		Installed: a.game.installed(), ISOMissing: p.ISOMissing, Controls: p.Controls, Options: p.shownOptions(), HasDLSS: p.DLSSFolder,
 		Title: p.Title, Version: launcherVersion, Build: a.game.build(), Ready: a.game.ready(), ISO: s.ISO, Settings: s,
 		DLSS: a.game.dlssInfo(), GPU: gpuNames(), Server: server, User: u, LoggedIn: ok, Playing: a.game.running(),
 		Platform: platformName, Qualities: a.game.qualityOptions(), FullscreenKey: fullscreenKey, DataFolder: a.game.dataFolder()}

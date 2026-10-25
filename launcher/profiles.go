@@ -71,6 +71,22 @@ func (p *profile) opt(s Settings, key string) bool {
 
 func (p *profile) supported() bool { return len(p.qualities()) > 0 }
 
+// windowsOnlyOptions: switches that only do something on Windows (frame generation: the Mac window takes its frames
+// through an IOSurface, and nativeFrameGen is empty there), kept out of the interface elsewhere.
+var windowsOnlyOptions = map[string]bool{"framegen": true}
+
+// shownOptions: the game's switches the interface lists on this system.
+func (p *profile) shownOptions() []GameOption {
+	var out []GameOption
+	for _, o := range p.Options {
+		if windowsOnlyOptions[o.Key] && platformName != "Windows" {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
 var profiles = []*profile{dbzProfile, br4Profile, nbaProfile}
 
 func profileByID(id string) *profile {

@@ -95,6 +95,10 @@ func (g *game) superResDLL() string {
 	if u := g.userDLSS(dlssSuperRes); u != "" {
 		return u
 	}
+	// the DLSS the pack ships: runtime\dlss\ from DBZ pack 2.5 (no GS host), the host's presets\ before
+	if p := filepath.Join(g.runtimeDir, "dlss", "nvngx_dlss.dll"); fileExists(p) {
+		return p
+	}
 	if p := filepath.Join(g.gshostDir, "presets", "nvngx_dlss.dll"); fileExists(p) {
 		return p
 	}

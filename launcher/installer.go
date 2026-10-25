@@ -374,8 +374,8 @@ func (a *App) install(g *game, m *gameManifest) error {
 			return fmt.Errorf("no pude conservar %s: %v", rel, err)
 		}
 	}
-	// the player's GS host settings (the presets they changed with F1)
-	if ents, err := os.ReadDir(filepath.Join(g.dir, "gshost")); err == nil {
+	// the player's GS host settings (the presets they changed with F1), when the new pack still has a GS host
+	if ents, err := os.ReadDir(filepath.Join(g.dir, "gshost")); err == nil && fileExists(filepath.Join(fresh, "gshost")) {
 		for _, e := range ents {
 			if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".ini") {
 				_ = copyIfChanged(filepath.Join(g.dir, "gshost", e.Name()), filepath.Join(fresh, "gshost", e.Name()))

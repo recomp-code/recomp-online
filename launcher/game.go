@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -150,7 +149,7 @@ func (g *game) setSettings(s Settings) error {
 
 func (g *game) ready() bool {
 	s := g.settings()
-	_, e1 := os.Stat(s.ISO)
+	_, e1 := isoStat(s.ISO)
 	_, e2 := os.Stat(filepath.Join(g.dataDir, g.p.BootName))
 	return g.installed() && s.ISO != "" && e1 == nil && e2 == nil
 }
@@ -498,26 +497,15 @@ func (g *game) play(m *netMatch, done func(code int, logs string)) error {
 		g.attach = ""
 	}
 	g.mu.Unlock()
-	cmd := exec.Command(g.runner, filepath.Join(g.dataDir, g.p.BootName))
-	cmd.Dir, cmd.Env = g.bootDir(), env
-	cleanup := g.prepareCmd(cmd)
-	if err := cmd.Start(); err != nil {
-		cleanup()
+	proc, wait, err := g.startRunner(filepath.Join(g.dataDir, g.p.BootName), g.bootDir(), env)
+	if err != nil {
 		return fmt.Errorf("no pude arrancar el juego: %v", err)
 	}
 	g.mu.Lock()
-	g.proc = cmd.Process
+	g.proc = proc
 	g.mu.Unlock()
 	go func() {
-		err := cmd.Wait()
-		code := 0
-		if err != nil {
-			code = 1
-			if ee, ok := err.(*exec.ExitError); ok {
-				code = ee.ExitCode()
-			}
-		}
-		cleanup()
+		code := wait()
 		g.mu.Lock()
 		g.proc = nil
 		handedOver := g.handingOver

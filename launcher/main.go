@@ -1,3 +1,5 @@
+//go:build !android
+
 // Recomp launcher (Go + Wails / WebView2): the game, its settings and the online lobby in one window.
 //
 // Build (no Wails CLI needed):

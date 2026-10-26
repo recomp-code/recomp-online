@@ -40,6 +40,7 @@ type profile struct {
 	ISOTitle         string // the file dialog's title
 	ISOMissing       string // what the play line says before the disc is chosen
 	Controls         string // the Controles paragraph (HTML)
+	ControlsAndroid  string // the same on Android (touch controls, Bluetooth pads); empty = Controls
 	Options          []GameOption
 	Qualities        map[string][]qualityPreset // by platformName
 	DLSSFolder       bool                       // Windows: the DLSS DLL folder and drop zone
@@ -55,6 +56,14 @@ type profile struct {
 }
 
 func (p *profile) qualities() []qualityPreset { return p.Qualities[platformName] }
+
+// controls: the Controles paragraph for this system.
+func (p *profile) controls() string {
+	if platformName == "Android" && p.ControlsAndroid != "" {
+		return p.ControlsAndroid
+	}
+	return p.Controls
+}
 
 func (p *profile) opt(s Settings, key string) bool {
 	if v, ok := s.Opts[key]; ok {
@@ -110,6 +119,9 @@ var dbzProfile = &profile{
 	Controls: "Mando de Xbox: A cruz, B círculo, X cuadrado, Y triángulo. Mantén START (o pulsa F1) para el menú de " +
 		"opciones del juego. Durante la partida, <b>Back + Start</b> (o Shift+Tab) abre esta ventana encima, para ver quién " +
 		"está en línea o invitar; aquí se maneja con la cruceta, A para aceptar y B para volver.",
+	ControlsAndroid: "Controles táctiles en pantalla: el stick aparece donde pongas el pulgar izquierdo. Un mando Bluetooth " +
+		"(Xbox, PlayStation u otro) funciona solo y esconde los controles táctiles. El botón <b>≡</b> de arriba abre el menú de " +
+		"opciones del juego.",
 	Options: []GameOption{
 		{"fps60", "Peleas a 60 fps", "En PS2 iban a 30. También se cambia dentro del juego.", true},
 		{"unlock", "Contenido desbloqueado", "Todos los personajes, escenarios y modos desde el principio, como el truco del menú. " +
@@ -128,6 +140,13 @@ var dbzProfile = &profile{
 		// real pixels (Retina) by MetalFX's temporal scaler with the game's real depth and motion. A 60 fps fight in a
 		// Retina fullscreen holds 60 on an M2 Pro (the PCSX2 presets were 6x 13.5 ms of GPU per frame, MetalFX 10.5 ms).
 		// Online too (plays with PCSX2 players). A saved quality from the old list is out of range and falls back to it.
+		// Android: the runtime's own renderer on the phone's Vulkan; the quality picks the render scale and the upscaler
+		// (game_android.go, androidQuality). Online with everyone.
+		"Android": {
+			{QualityOption{"Equilibrada", "La resolución de la PS2 reescalada a tu pantalla con FSR 2. La recomendada para casi todos los teléfonos. También en línea."}, "", "native"},
+			{QualityOption{"Alta", "El doble de resolución, reescalada con FSR 2. Para teléfonos de gama alta. También en línea."}, "", "native"},
+			{QualityOption{"Ahorro de batería", "La resolución de la PS2 sin reescalador: lo que menos gasta. También en línea."}, "", "native"},
+		},
 		"macOS": {
 			{QualityOption{"Nativo + MetalFX", "El renderizador propio, sin emulador de gráficos: más fps y menos CPU; lo reescala MetalFX de Apple a la resolución de tu pantalla. También en línea."}, "", "native"},
 		},

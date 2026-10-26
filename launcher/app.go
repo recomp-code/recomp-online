@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const launcherVersion = "3.4.6"
@@ -51,13 +49,13 @@ func (a *App) emit(name string, data any) {
 		a.voice.leave() // [voice] signed out, or another launcher took this account: out of the channel
 	}
 	if a.ctx != nil {
-		wruntime.EventsEmit(a.ctx, name, data)
+		uiEmit(a.ctx, name, data)
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	wruntime.OnFileDrop(ctx, func(x, y int, paths []string) {
+	uiOnFileDrop(ctx, func(paths []string) {
 		n, skipped := a.game.addDLSS(paths)
 		a.emit("dlss", map[string]any{"added": n, "skipped": skipped, "info": a.game.dlssInfo()})
 	})
@@ -78,7 +76,7 @@ func (a *App) startup(ctx context.Context) {
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			if err := a.Play(); err != "" {
-				wruntime.WindowShow(ctx)
+				uiShow(ctx)
 			}
 		}()
 	}
@@ -100,7 +98,7 @@ func (a *App) testInvite(user string) {
 			return
 		}
 		if msg := a.Invite(user); msg != "" {
-			wruntime.LogInfo(a.ctx, "test invite: "+msg)
+			uiLog(a.ctx, "test invite: "+msg)
 		}
 	}
 }
@@ -214,7 +212,7 @@ func (a *App) State() State {
 	a.net.mu.Unlock()
 	p := a.game.p
 	return State{Games: a.gameEntries(), Game: p.ID, Short: p.Short, Banner: p.Banner, Sub: p.Sub, Serial: p.Serial,
-		Installed: a.game.installed(), ISOMissing: p.ISOMissing, Controls: p.Controls, Options: p.shownOptions(), HasDLSS: p.DLSSFolder,
+		Installed: a.game.installed(), ISOMissing: p.ISOMissing, Controls: p.controls(), Options: p.shownOptions(), HasDLSS: p.DLSSFolder,
 		Title: p.Title, Version: launcherVersion, Build: a.game.build(), Ready: a.game.ready(), ISO: s.ISO, Settings: s,
 		DLSS: a.game.dlssInfo(), GPU: gpuNames(), Server: server, User: u, LoggedIn: ok, Playing: a.game.running(),
 		Platform: platformName, Qualities: a.game.qualityOptions(), FullscreenKey: fullscreenKey, DataFolder: a.game.dataFolder()}
@@ -230,8 +228,7 @@ func errText(err error) string {
 }
 
 func (a *App) ChooseISO() string {
-	p, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: a.game.p.ISOTitle,
-		Filters: []wruntime.FileFilter{{DisplayName: "Imagen de disco PS2 (*.iso)", Pattern: "*.iso"}}})
+	p, err := uiOpenISO(a.ctx, a.game.p.ISOTitle)
 	if err != nil || p == "" {
 		return ""
 	}
@@ -249,7 +246,7 @@ func (a *App) OpenDLSSFolder() {
 func (a *App) OpenLink(which string) {
 	links := map[string]string{"github": "https://github.com/" + a.game.p.Repo}
 	if u, ok := links[which]; ok {
-		wruntime.BrowserOpenURL(a.ctx, u)
+		uiOpenURL(a.ctx, u)
 	}
 }
 
@@ -270,7 +267,7 @@ func (a *App) start(m *netMatch) string {
 			_ = a.net.call("/api/match/end", map[string]string{"id": cur.ID}, nil)
 		}
 		if quit {
-			wruntime.Quit(a.ctx)
+			uiQuit(a.ctx)
 			return
 		}
 		a.setOverlay(false)
@@ -314,7 +311,7 @@ func (a *App) setOverlay(on bool) {
 	a.mu.Lock()
 	a.overlay = on
 	a.mu.Unlock()
-	wruntime.WindowSetAlwaysOnTop(a.ctx, on)
+	uiAlwaysOnTop(a.ctx, on)
 	a.emit("overlay", on)
 }
 
@@ -471,7 +468,7 @@ func (a *App) onNetEvent(ev map[string]any) {
 			} else {
 				// minimized, it stays so: the game's window opens on its own, and a WebView2 that was never shown (a
 				// launcher started minimized) fails its focus and go-webview2 ends the process
-				if !wruntime.WindowIsMinimised(a.ctx) {
+				if !uiMinimised(a.ctx) {
 					a.toForeground()
 				}
 				a.emit("match_countdown", map[string]any{"opponent": mm["opponent"], "player": m.Player})
@@ -573,7 +570,7 @@ func (a *App) Quit() {
 	if a.game.running() {
 		a.game.stop()
 	}
-	wruntime.Quit(a.ctx)
+	uiQuit(a.ctx)
 }
 
 // inGameInvite: [invite] hands an invitation to the running game's GS host, which draws it over the game and takes the

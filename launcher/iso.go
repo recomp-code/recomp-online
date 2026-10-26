@@ -26,7 +26,7 @@ type isoImage struct {
 }
 
 func openISO(path string) (*isoImage, error) {
-	f, err := os.Open(path)
+	f, err := isoOpen(path)
 	if err != nil {
 		return nil, err
 	}

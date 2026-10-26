@@ -120,7 +120,7 @@ var dbzProfile = &profile{
 		"opciones del juego. Durante la partida, <b>Back + Start</b> (o Shift+Tab) abre esta ventana encima, para ver quién " +
 		"está en línea o invitar; aquí se maneja con la cruceta, A para aceptar y B para volver.",
 	ControlsAndroid: "Controles táctiles en pantalla: el stick aparece donde pongas el pulgar izquierdo. Un mando Bluetooth " +
-		"(Xbox, PlayStation u otro) funciona solo y esconde los controles táctiles. El botón <b>≡</b> de arriba abre el menú de " +
+		"(Xbox, PlayStation u otro) funciona solo y esconde los controles táctiles. El botón <b>≡</b> (abajo, en el centro) abre el menú de " +
 		"opciones del juego.",
 	Options: []GameOption{
 		{"fps60", "Peleas a 60 fps", "En PS2 iban a 30. También se cambia dentro del juego.", true},

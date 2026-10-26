@@ -215,7 +215,11 @@ func isoOpen(path string) (*os.File, error) {
 
 func isoStat(path string) (os.FileInfo, error) {
 	if !strings.HasPrefix(path, "content://") {
-		return os.Stat(path)
+		fi, err := os.Stat(path)
+		if err != nil {
+			_, _ = platform("log", "ISO: "+err.Error())
+		}
+		return fi, err
 	}
 	f, err := isoOpen(path)
 	if err != nil {

@@ -152,7 +152,7 @@ var dbzProfile = &profile{
 		},
 	},
 	DLSSFolder: true, Fps60Sites: true,
-	netProtocol: "net2",
+	netProtocol: "net3", // net3: the detmath layer (portable sin/cos kernels and acosf); net2 builds drift apart from it
 	env:         dbzEnv,
 	afterGame:   dbzReadBackFps60,
 }

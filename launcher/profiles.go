@@ -53,6 +53,9 @@ type profile struct {
 	afterGame func(g *game, hostIni string)
 	// netProtocol: who can play with whom online (bump it when the netplay changes what crosses the wire)
 	netProtocol string
+	// minPack: where the runner ships in a downloadable pack (Windows), online needs at least this pack version.
+	// Below it the build key diverges so a stale pack cannot pair with up-to-date clients and desync. Empty: no gate.
+	minPack string
 }
 
 func (p *profile) qualities() []qualityPreset { return p.Qualities[platformName] }
@@ -153,6 +156,7 @@ var dbzProfile = &profile{
 	},
 	DLSSFolder: true, Fps60Sites: true,
 	netProtocol: "net3", // net3: the detmath layer (portable sin/cos kernels and acosf); net2 builds drift apart from it
+	minPack:     "2.5.7", // detmath first ships in the Windows pack here; older packs run net3 but desync
 	env:         dbzEnv,
 	afterGame:   dbzReadBackFps60,
 }

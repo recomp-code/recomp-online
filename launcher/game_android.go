@@ -26,6 +26,9 @@ import (
 
 const platformName = "Android"
 
+// runnerInPack: the runner is bundled in the APK, so there is no separate pack to gate on for online.
+const runnerInPack = false
+
 const fullscreenKey = ""
 
 // androidRoot: the app's files folder, from goInit.

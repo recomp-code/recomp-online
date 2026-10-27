@@ -23,6 +23,9 @@ import (
 
 const platformName = "macOS"
 
+// runnerInPack: the runner is bundled in the app, so there is no separate pack to gate on for online.
+const runnerInPack = false
+
 // The quality presets are per game (profiles.go, Qualities["macOS"]).
 
 const fullscreenKey = "Option+Return (o Ctrl+Cmd+F)"

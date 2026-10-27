@@ -373,6 +373,15 @@ func (g *game) build() string {
 	if v := g.packVersion(); v != "" && !g.p.Fps60Sites {
 		b += "-" + v
 	}
+	// Gate: where the runner ships in a downloadable pack (Windows), the launcher advertises netProtocol from its own
+	// version, but an installed pack older than the profile's minimum lacks what that protocol needs (net3 -> the
+	// detmath runtime, first in pack 2.5.7). Such a pack would otherwise pair as a current client and desync. Diverge
+	// the key so it cannot match up-to-date clients; the lobby then shows it as a different version.
+	if runnerInPack && g.p.minPack != "" {
+		if v := g.packVersion(); v == "" || newerVersion(g.p.minPack, v) {
+			b += "-needpack" + g.p.minPack
+		}
+	}
 	return b
 }
 

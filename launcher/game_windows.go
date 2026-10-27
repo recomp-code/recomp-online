@@ -13,6 +13,9 @@ import (
 
 const platformName = "Windows"
 
+// runnerInPack: the runner ships in a separately downloaded game pack here, so online gates on the pack version.
+const runnerInPack = true
+
 const fullscreenKey = "Alt+Enter"
 
 // cfgName: the settings file in the game's folder (DBZ keeps the v1.x name, so an update keeps its settings).

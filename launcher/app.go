@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const launcherVersion = "3.4.6"
+const launcherVersion = "3.4.7"
 
 // defaultServer is set at build time: -ldflags "-X main.defaultServer=https://online.tudominio.com"
 var defaultServer = "https://online.example.com"

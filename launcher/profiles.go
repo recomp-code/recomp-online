@@ -143,8 +143,8 @@ var dbzProfile = &profile{
 		// Android: the runtime's own renderer on the phone's Vulkan; the quality picks the render scale and the upscaler
 		// (game_android.go, androidQuality). Online with everyone.
 		"Android": {
-			{QualityOption{"Equilibrada", "La resolución de la PS2 reescalada a tu pantalla con FSR 2. La recomendada para casi todos los teléfonos. También en línea."}, "", "native"},
-			{QualityOption{"Alta", "El doble de resolución, reescalada con FSR 2. Para teléfonos de gama alta. También en línea."}, "", "native"},
+			{QualityOption{"Equilibrada", "La resolución de la PS2 reescalada a tu pantalla (SGSR 2 en Snapdragon, FSR 2 en los demás). La recomendada para casi todos los teléfonos. También en línea."}, "", "native"},
+			{QualityOption{"Alta", "El doble de resolución, reescalada con SGSR 2 en Snapdragon o FSR 2 en los demás. Para teléfonos de gama alta. También en línea."}, "", "native"},
 			{QualityOption{"Ahorro de batería", "La resolución de la PS2 sin reescalador: lo que menos gasta. También en línea."}, "", "native"},
 		},
 		"macOS": {

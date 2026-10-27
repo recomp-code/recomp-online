@@ -128,8 +128,8 @@ func (g *game) hostSetup(s Settings) (string, string, []string, error) {
 
 // androidQuality: the runtime's render scale and upscaler for each Android quality (profiles.go, Qualities["Android"]).
 var androidQuality = []struct{ scale, upscale string }{
-	{"1", "fsr"}, // Equilibrada: the PS2's resolution, FSR 2 to the screen
-	{"2", "fsr"}, // Alta: twice the PS2's resolution, FSR 2 to the screen
+	{"1", "fsr"}, // Equilibrada: the PS2's resolution to the screen ("fsr": the runtime picks SGSR 2 on Adreno, FSR 2 elsewhere)
+	{"2", "fsr"}, // Alta: twice the PS2's resolution to the screen (SGSR 2 on Adreno, FSR 2 elsewhere)
 	{"1", "off"}, // Ahorro: the PS2's resolution, plain filtering (the least GPU and battery)
 }
 
